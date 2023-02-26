@@ -25,10 +25,19 @@ end
 ---@returns string
 M.fill_template = function(text, opts)
 	local params = vim.tbl_extend("force", opts or {}, config.template_params or {}, get_basic_params(opts))
-	---@param key string
-	---@param value string
-	for key, value in pairs(params) do
-		text = text:gsub("{{" .. key .. "}}", value)
+	---@param k string
+	---@param v string
+	for k, v in pairs(params) do
+		---@type any
+		local value
+		if type(v) == "function" then
+			---@diagnostic disable-next-line: no-unknown
+			value = v(text, opts)
+		else
+			value = v
+		end
+		---@diagnostic disable-next-line: no-unknown
+		text = text:gsub("{{" .. k .. "}}", value)
 	end
 	return text
 end
