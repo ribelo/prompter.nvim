@@ -80,6 +80,8 @@ response from the API, the `previewer` will be replaced with the response. You
 can copy it using `<C-y>` or replace the selected text in the buffer with
 `<C-p>`.
 
+`{{There will be a video sometime}}`
+
 ## Prompts
 
 ```json
