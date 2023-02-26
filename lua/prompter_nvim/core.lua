@@ -29,4 +29,35 @@ end
 
 create_dir(config.global_prompts_path, 511)
 
+M.setup = function(opts)
+	config = vim.tbl_extend("force", config, opts)
+	vim.api.nvim_create_user_command("PrompterContinue", function(args)
+		M.prompter_continue(args)
+	end, {
+		range = true,
+		nargs = "*",
+	})
+
+	vim.api.nvim_create_user_command("PrompterReplace", function(args)
+		M.prompter_replace(args)
+	end, {
+		range = true,
+		nargs = "*",
+	})
+
+	vim.api.nvim_create_user_command("PrompterEdit", function(args)
+		M.prompter_edit(args)
+	end, {
+		range = true,
+		nargs = "+",
+	})
+
+	vim.api.nvim_create_user_command("PrompterBrowser", function(args)
+		M.browser(args)
+	end, {
+		range = true,
+		nargs = "*",
+	})
+end
+
 return M
