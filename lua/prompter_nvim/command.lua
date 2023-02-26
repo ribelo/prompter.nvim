@@ -66,8 +66,12 @@ M.prompter_continue = function(args)
 	M.completion_prompt(args, function(output, range)
 		---@type string|string[]
 		local text = output.choices[1].text
+
+		-- Ensure that the text is an array of strings
 		text = utils.ensure_get_lines(text)
-		utils.buffer_append_text(text, { start_row = range.end_row - 1 })
+
+		-- Append the text to the buffer, starting one row below the end of the range
+		utils.buffer_append_text(text, { start_row = range.end_row + 1 })
 	end)
 end
 
