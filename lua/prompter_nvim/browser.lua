@@ -129,7 +129,6 @@ M.show_browser = function(args)
 						end
 						body.instruction = prompt
 					end
-					vim.pretty_print("body", body)
 					openai.call(endpoint, body, function(err, output)
 						---@type string?
 						local text = err or output.choices[1].text

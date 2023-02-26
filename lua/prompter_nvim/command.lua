@@ -46,7 +46,6 @@ M.completion_prompt = function(args, cb)
 	local mark_id = vim.api.nvim_buf_set_extmark(0, ns_id, range.start_row, range.start_col, extmark_opts)
 
 	local on_result = function(err, output)
-		vim.pretty_print("result", err, output)
 		vim.api.nvim_buf_del_extmark(0, ns_id, mark_id)
 		if err then
 			vim.notify(err, vim.log.levels.ERROR, {})
@@ -68,7 +67,6 @@ M.prompter_continue = function(args)
 		---@type string|string[]
 		local text = output.choices[1].text
 		text = utils.ensure_get_lines(text)
-		vim.pretty_print("range", range)
 		utils.buffer_append_text(text, { start_row = range.end_row - 1 })
 	end)
 end
@@ -109,7 +107,6 @@ M.prompter_edit = function(args)
 	local mark_id = vim.api.nvim_buf_set_extmark(0, ns_id, range.start_row, range.start_col, extmark_opts)
 
 	local on_result = function(err, output)
-		vim.pretty_print("result", err, output)
 		vim.api.nvim_buf_del_extmark(0, ns_id, mark_id)
 		if err then
 			vim.notify(err, vim.log.levels.ERROR, {})
