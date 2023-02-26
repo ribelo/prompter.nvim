@@ -119,4 +119,4 @@ parameter is a function, the result of that function will be used.
 
 ## License
 
-Unlicensed
+Unlicense
