@@ -1,1 +1,1 @@
-require("prompter_nvim.core")
+require("prompter_nvim")

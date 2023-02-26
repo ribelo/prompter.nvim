@@ -1,7 +1,3 @@
-vim.opt.runtimepath:append("~/projects/nvim_plugins/prompter.nvim")
-
-local M = {}
-
 local config = require("prompter_nvim.config")
 local browser = require("prompter_nvim.browser")
 local command = require("prompter_nvim.command")
@@ -10,6 +6,8 @@ M.browser = browser.show_browser
 M.prompter_continue = command.prompter_continue
 M.prompter_replace = command.prompter_replace
 M.prompter_edit = command.prompter_edit
+
+local M = {}
 
 local function mkdir(path, mode)
 	vim.loop.fs_mkdir(path, mode)
