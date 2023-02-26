@@ -56,20 +56,24 @@ selection, use text from the current line to the current minus
 `config.context_size`. API often returns blank lines at the beginning or end of
 the response, so it is trimmed. The text is prepended with the `cmd` arguments.
 
-`{{There will be a video sometime}}`
+https://user-images.githubusercontent.com/1815898/221428619-ece540d0-4957-48c4-bf7a-0fa655291297.mp4
 
 ### PrompterReplace
 
 Everything as above, except replacing the selection with the answer from the API.
 
-`{{There will be a video sometime}}`
+
+https://user-images.githubusercontent.com/1815898/221428683-b58a5a43-7896-443a-a17d-c99f4d36c0a0.mp4
+
 
 ### PrompterEdit
 
 Use the edits endpoint. The `cmd` arguments are used as instructions and the
 selection as input. The rest is as above.
 
-`{{There will be a video sometime}}`
+
+https://user-images.githubusercontent.com/1815898/221428736-8c5fe309-63e1-434c-8a92-4b77b8a40152.mp4
+
 
 ### PrompterBrowser
 
@@ -80,7 +84,14 @@ response from the API, the `previewer` will be replaced with the response. You
 can copy it using `<C-y>` or replace the selected text in the buffer with
 `<C-p>`.
 
-`{{There will be a video sometime}}`
+
+https://user-images.githubusercontent.com/1815898/221428803-c4ebd3ce-b65c-4052-a556-0870f902d088.mp4
+
+<br>
+
+https://user-images.githubusercontent.com/1815898/221428804-ef9989d7-c941-4cfc-a86c-360f0e76d19b.mp4
+
+
 
 ## Prompts
 
