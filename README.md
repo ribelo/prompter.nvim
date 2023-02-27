@@ -62,9 +62,7 @@ https://user-images.githubusercontent.com/1815898/221428619-ece540d0-4957-48c4-b
 
 Everything as above, except replacing the selection with the answer from the API.
 
-
 https://user-images.githubusercontent.com/1815898/221428683-b58a5a43-7896-443a-a17d-c99f4d36c0a0.mp4
-
 
 ### PrompterEdit
 
@@ -84,14 +82,11 @@ response from the API, the `previewer` will be replaced with the response. You
 can copy it using `<C-y>` or replace the selected text in the buffer with
 `<C-p>`.
 
-
 https://user-images.githubusercontent.com/1815898/221428803-c4ebd3ce-b65c-4052-a556-0870f902d088.mp4
 
 <br>
 
 https://user-images.githubusercontent.com/1815898/221428804-ef9989d7-c941-4cfc-a86c-360f0e76d19b.mp4
-
-
 
 ## Prompts
 
@@ -118,5 +113,5 @@ You can put a certain amount of variables into `opts.template_params`. If the
 parameter is a function, the result of that function will be used.
 
 ## License
-
+yet another gpt-3 interface.
 Unlicense
