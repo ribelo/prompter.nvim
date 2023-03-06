@@ -71,7 +71,7 @@ M.show_browser = function(args)
 		preview_fn = function(_, entry, status)
 			local previewer_buffer = vim.api.nvim_win_get_buf(status.preview_win)
 			---@type string
-			local text = entry.value.prompt or entry.value.instruction
+			local text = entry.value.prompt or entry.value.instruction or entry.value.message
 			if selected_text and #selected_text > 0 then
 				---@type string
 				text = template.fill_template(
@@ -128,10 +128,13 @@ M.show_browser = function(args)
 							body.input = utils.ensure_get_text(selected_text)
 						end
 						body.instruction = prompt
+					elseif endpoint == "chat/completions" then
+						body.messages = { { role = "user", content = prompt } }
 					end
 					openai.call(endpoint, body, function(err, output)
+						vim.pretty_print("output", output)
 						---@type string?
-						local text = err or output.choices[1].text
+						local text = err or output.choices[1].text or output.choices[1].message.content
 						if text then
 							if entry.value.trim_result then
 								text = vim.trim(text)
