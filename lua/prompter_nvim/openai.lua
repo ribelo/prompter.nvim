@@ -2,6 +2,28 @@ local config = require("prompter_nvim/config")
 
 local M = {}
 
+---@alias completion_choice {text: string, index: integer, logprobs: any?, finish_reason: string}
+---@alias edit_choice {text: string, index: integer}
+
+---@alias chat_message {role: string, content: string}
+---@alias chat_choice {message: chat_message, index: integer, finish_reason: string}
+
+---@class OpenAiResponse
+---@field id string
+---@field object string
+---@field created integer
+---@field model string
+---@field usage {prompt_tokens: integer, completion_tokens: integer, total_tokens: integer}
+
+---@class CompletionsResponse: OpenAiResponse
+---@field choices completion_choice[]
+--
+---@class EditsResponse: OpenAiResponse
+---@field choices completion_choice[]
+
+---@class ChatResponse: OpenAiResponse
+---@field choices chat_choice[]
+
 M.exec = function(cmd, args, on_result)
 	local stdout = vim.loop.new_pipe()
 	local stdout_chunks = {}

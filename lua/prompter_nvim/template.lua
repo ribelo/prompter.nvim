@@ -9,12 +9,15 @@ local M = {}
 ---@param opts? { buffer?: number; win?: number }
 local function get_basic_params(opts)
 	local params = {}
+	local buffnr = utils.get_buffer_id(opts)
 
 	params.cwd = vim.fn.getcwd(utils.get_win_id(opts))
-	params.filepath = vim.api.nvim_buf_get_name(utils.get_buffer_id(opts))
+	params.filepath = vim.api.nvim_buf_get_name(buffnr)
 	params.filename = params.filepath:match(".+/([^/]+)$")
 	---@type string
 	params.filetype = pf.detect_from_extension(params.filepath)
+	---@type string
+	params.commentstring = vim.api.nvim_buf_get_option(buffnr, "commentstring"):gsub("%%s", "")
 
 	return params
 end
