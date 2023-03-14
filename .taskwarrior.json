@@ -1,0 +1,34 @@
+{
+  "description": [
+    {
+      "command": [
+        "git",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      "regex": "https://github.com/([^/]+/[^/]+)%.git"
+    },
+    {
+      "text": ":"
+    },
+    {
+      "command": [
+        "git",
+        "rev-parse",
+        "--abbrev-ref",
+        "HEAD"
+      ]
+    }
+  ],
+  "project": [
+    {
+      "text": "ribelo"
+    }
+  ],
+  "tags": [
+    {
+      "text": "nvim_plugins"
+    }
+  ]
+}
