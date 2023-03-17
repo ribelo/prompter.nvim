@@ -2,7 +2,6 @@ local M = {}
 
 local utils = require("prompter_nvim.utils")
 local Prompt = require("prompter_nvim.prompt")
-local template = require("prompter_nvim.template")
 local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
 local previewers = require("telescope.previewers")
@@ -12,49 +11,109 @@ local actions_state = require("telescope.actions.state")
 
 local global_prompt_path = vim.fn.stdpath("data") .. "/prompts"
 
--- This function takes no arguments and returns an array of Prompt objects.
+local function find_recursive_prompts_path(path, root)
+	local prompt_path = path .. "/.prompts"
+	if vim.fn.isdirectory(prompt_path) == 1 then
+		return prompt_path
+	elseif path == root then
+		return nil
+	else
+		return find_recursive_prompts_path(path:match("(.-)[\\/][^\\/]+$"), root)
+	end
+end
+
+local function get_prompt_files(prompt_path)
+	if not prompt_path then
+		return {}
+	else
+		return vim.fn.glob(prompt_path .. "/*.json", false, true)
+	end
+end
+
+local function read_json(file_path)
+	local file = io.open(file_path, "r")
+	if not file then
+		return nil
+	end
+
+	local content = file:read("*all")
+	file:close()
+
+	return vim.fn.json_decode(content)
+end
+
 ---@return Prompt[]
 local function get_saved_prompts()
-	local prompts = {}
-
-	-- local and global path to search prompt JSON files.
 	local cwd = vim.loop.cwd()
-	local local_prompt_path = cwd .. "/.prompts"
+	local root = vim.loop.fs_realpath("/") or "/"
 
-	-- get all prompt files under .prompts folder ignoring sub folders.
-	local local_prompt_files = vim.fn.glob(local_prompt_path .. "/*.json", false, true)
+	local local_prompt_path = find_recursive_prompts_path(cwd, root)
+	local local_prompt_files = get_prompt_files(local_prompt_path)
 
-	-- get all prompt files under global prompt path ignoring sub folders.
-	local global_prompt_files = vim.fn.glob(global_prompt_path .. "/*.json", false, true)
+	local global_prompt_files = get_prompt_files(global_prompt_path)
 
-	-- merge both global and local prompt files.
 	local all_prompt_files = vim.tbl_flatten({ local_prompt_files, global_prompt_files })
 
-	-- iterate all JSON files.
-	---@param file_path string
+	local prompts = {}
 	for _, file_path in ipairs(all_prompt_files) do
-		-- open file in readonly mode
-		local file = io.open(file_path, "r")
-
-		if file then -- check if file is opened successfully
-			-- read whole file as a string
-			local content = file:read("*all")
-
-			-- close opened file
-			file:close()
-
-			-- decode JSON string into a Lua table
-			local prompt = vim.fn.json_decode(content)
-
-			-- push decoded prompt into prompts array as a new Prompt object
-			if prompt then
-				table.insert(prompts, Prompt:new(prompt))
-			end
+		local json_object = read_json(file_path)
+		local prompt = Prompt:new(json_object)
+		if prompt then
+			table.insert(prompts, prompt)
 		end
 	end
 
-	-- return all Prompt objects
 	return prompts
+end
+
+---@param models string|string[]
+---@param on_choice fun(model: string)
+local function choice_model(models, on_choice)
+	if type(models) == "string" then
+		on_choice(models)
+	elseif type(models) == "table" then
+		local Menu = require("nui.menu")
+		---@param model string
+		local lines = vim.tbl_map(function(model)
+			return Menu.item(model)
+		end, models)
+
+		local menu = Menu({
+			zindex = 1000,
+			relative = "editor",
+			position = "50%",
+			size = {
+				width = 25,
+				height = 5,
+			},
+			border = {
+				style = "rounded",
+				text = {
+					top = " Choose a Model ",
+					top_align = "center",
+				},
+			},
+			win_options = {
+				winhighlight = "Normal:Normal,FloatBorder:Normal",
+			},
+		}, {
+			lines = lines,
+			max_width = 20,
+			keymap = {
+				focus_next = { "j", "<Down>", "<Tab>" },
+				focus_prev = { "k", "<Up>", "<S-Tab>" },
+				close = { "<Esc>", "<C-c>" },
+				submit = { "<CR>" },
+			},
+			on_submit = function(item)
+				on_choice(item.text)
+			end,
+		})
+		vim.schedule(function()
+			vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<ESC>", true, false, true), "n", true)
+			menu:mount()
+		end)
+	end
 end
 
 M.show_browser = function(args)
@@ -146,20 +205,26 @@ M.show_browser = function(args)
 				---@type {value: Prompt}
 				local entry = actions_state.get_selected_entry()
 				local prompt = entry.value
-				local endpoint = entry.value.endpoint or "copletions"
-				prompt:send(function(err, output)
-					vim.pretty_print("output", output)
-					---@type string?
-					local text = err or output.choices[1].text or output.choices[1].message.content
-					if text then
-						if entry.value.trim_result then
-							text = vim.trim(text)
-						end
-						if vim.api.nvim_buf_is_valid(preview_buffer) then
-							utils.buffer_replace_content(text, { buffer = preview_buffer })
-						end
+				local send = function(model)
+					if not model then
+						return
 					end
-				end)
+					prompt.model = model
+					prompt:send(function(err, output)
+						vim.pretty_print("output", output)
+						---@type string?
+						local text = err or output.choices[1].text or output.choices[1].message.content
+						if text then
+							if entry.value.trim_result then
+								text = vim.trim(text)
+							end
+							if vim.api.nvim_buf_is_valid(preview_buffer) then
+								utils.buffer_replace_content(text, { buffer = preview_buffer })
+							end
+						end
+					end)
+				end
+				choice_model(entry.value.model, send)
 			end)
 
 			return true

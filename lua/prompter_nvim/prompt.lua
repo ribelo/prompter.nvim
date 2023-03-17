@@ -64,7 +64,7 @@ end
 
 ---@class Prompt
 ---@field endpoint endpoints
----@field model string
+---@field model string|string[]
 ---@field messages message[]
 ---@field name string
 ---@field temperature? number
