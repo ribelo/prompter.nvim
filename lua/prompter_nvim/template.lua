@@ -8,18 +8,19 @@ local M = {}
 ---Gets basic parameters to fill the template
 ---@param opts? { buffer?: number; win?: number }
 local function get_basic_params(opts)
-	local params = {}
-	local buffnr = utils.get_buffer_id(opts)
+  local params = {}
+  local buffnr = utils.get_buffer_id(opts)
 
-	params.cwd = vim.fn.getcwd(utils.get_win_id(opts))
-	params.filepath = vim.api.nvim_buf_get_name(buffnr)
-	params.filename = params.filepath:match(".+/([^/]+)$")
-	---@type string
-	params.filetype = pf.detect_from_extension(params.filepath)
-	---@type string
-	params.commentstring = vim.api.nvim_buf_get_option(buffnr, "commentstring"):gsub("%%s", "")
+  params.cwd = vim.fn.getcwd(utils.get_win_id(opts))
+  params.filepath = vim.api.nvim_buf_get_name(buffnr)
+  params.filename = params.filepath:match(".+/([^/]+)$")
+  ---@type string
+  params.filetype = pf.detect_from_extension(params.filepath)
+  ---@type string
+  params.commentstring =
+    vim.api.nvim_buf_get_option(buffnr, "commentstring"):gsub("%%s", "")
 
-	return params
+  return params
 end
 
 ---Fill template with appropriate data
@@ -27,22 +28,28 @@ end
 ---@param opts? table
 ---@returns string
 M.fill_template = function(text, opts)
-	local params = vim.tbl_extend("force", opts or {}, config.template_params or {}, get_basic_params(opts))
-	---@param k string
-	---@param v string
-	for k, v in pairs(params) do
-		---@type any
-		local value
-		if type(v) == "function" then
-			---@diagnostic disable-next-line: no-unknown
-			value = v(text, opts)
-		else
-			value = v
-		end
-		---@diagnostic disable-next-line: no-unknown
-		text = text:gsub("{{" .. k .. "}}", value)
-	end
-	return text
+  vim.print({ text = text })
+  local params = vim.tbl_extend(
+    "force",
+    opts or {},
+    config.template_params or {},
+    get_basic_params(opts)
+  )
+  ---@param k string
+  ---@param v string
+  for k, v in pairs(params) do
+    ---@type any
+    local value
+    if type(v) == "function" then
+      ---@diagnostic disable-next-line: no-unknown
+      value = v(text, opts)
+    else
+      value = v
+    end
+    ---@diagnostic disable-next-line: no-unknown
+    text = text:gsub("{{" .. k .. "}}", value)
+  end
+  return text
 end
 
 return M
