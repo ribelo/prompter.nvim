@@ -79,7 +79,6 @@ M.exec = function(cmd, args, on_result)
 end
 
 M.call = function(endpoint, body, on_result)
-  vim.print({ body = body })
   local curl_args = {
     "-X",
     "POST",

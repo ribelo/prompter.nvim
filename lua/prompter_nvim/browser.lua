@@ -116,7 +116,7 @@ local function choice_model(models, on_choice)
       keymap = {
         focus_next = { "j", "<Down>", "<Tab>" },
         focus_prev = { "k", "<Up>", "<S-Tab>" },
-        close = { "<Esc>", "<C-c>" },
+        close = { "<Esc>", "<C-c>", "q" },
         submit = { "<CR>" },
       },
       on_submit = function(item)
@@ -134,15 +134,14 @@ local function choice_model(models, on_choice)
   end
 end
 
+---@param args {selected_text?: string, pre_prompt: string}
 M.show_browser = function(args)
-  local win_id = utils.get_win_id()
-  local buffer_id = utils.get_buffer_id()
+  local selected_text = args.selected_text
+  local pre_prompt = args.pre_prompt
+
+  local win_id = vim.api.nvim_get_current_win()
+  local buffer_id = vim.api.nvim_get_current_buf()
   local prompts = get_saved_prompts()
-  ---@type string[]?
-  local selected_text
-  if utils.is_visual_mode(args) then
-    selected_text = utils.get_selected_text()
-  end
 
   local entry_maker = function(entry)
     return {
@@ -171,9 +170,14 @@ M.show_browser = function(args)
       local content = {}
 
       local prompt = AnthropicChatRequest:new(json_object)
-      local template_params = { buffer = buffer_id, win = win_id }
+      ---@type {buffer: number, win: number, content?: string}
+      local template_params =
+        { buffer = buffer_id, win = win_id, content = pre_prompt }
+
       if selected_text and #selected_text > 0 then
-        template_params.selection = utils.join_lines(selected_text)
+        template_params.content = template_params.content
+          .. "\n"
+          .. selected_text
       end
       prompt:fill(template_params)
 
@@ -181,7 +185,6 @@ M.show_browser = function(args)
         table.insert(content, "system: ")
         vim.list_extend(content, utils.ensure_get_lines(prompt.system))
         table.insert(content, "")
-        vim.print({ content = content })
       end
       for _, message in ipairs(prompt.messages) do
         if message.role == "user" then
@@ -191,8 +194,20 @@ M.show_browser = function(args)
           table.insert(content, "assistant: ")
           table.insert(content, "")
         end
-        for line in message.content:gmatch("[^\n]+") do
-          table.insert(content, line)
+        if type(message.content) == "string" then
+          ---@diagnostic disable-next-line: cast-type-mismatch, param-type-mismatch
+          for line in message.content:gmatch("[^\n]+") do
+            table.insert(content, line)
+          end
+        elseif type(message.content) == "table" then
+          ---@diagnostic disable-next-line: cast-type-mismatch, param-type-mismatch
+          for _, item in ipairs(message.content) do
+            if type(item) == "table" and item.type == "text" then
+              table.insert(content, item.text)
+            elseif type(item) == "string" then
+              table.insert(content, item)
+            end
+          end
         end
         table.insert(content, "")
       end
@@ -200,65 +215,62 @@ M.show_browser = function(args)
     end,
   })
 
-  local opts = {
+  local opts = require("telescope.themes").get_dropdown()
+  opts.finder = finder
+  ---@diagnostic disable-next-line: no-unknown
+  opts.previewer = previewer
+  opts.attach_mappings = function(buf, map)
     ---@diagnostic disable-next-line: no-unknown
-    finder = finder,
-    ---@diagnostic disable-next-line: no-unknown
-    previewer = previewer,
-    attach_mappings = function(buf, map)
-      ---@diagnostic disable-next-line: no-unknown
-      local picker = actions_state.get_current_picker(buf)
-      local preview_buffer = vim.api.nvim_win_get_buf(picker.preview_win)
-      ---@type number
-      local prompt_buffer = picker.prompt_bufnr
+    local picker = actions_state.get_current_picker(buf)
+    local preview_buffer = vim.api.nvim_win_get_buf(picker.preview_win)
+    ---@type number
+    local prompt_buffer = picker.prompt_bufnr
 
-      map("i", "<c-y>", function()
-        vim.notify("yanked result", vim.log.levels.INFO, {})
-        local text = utils.join_lines(
-          vim.api.nvim_buf_get_lines(preview_buffer, 0, -1, true)
-        )
-        vim.fn.setreg("+", text)
-        actions.close(prompt_buffer)
-      end)
+    map("i", "<c-y>", function()
+      vim.notify("yanked result", vim.log.levels.INFO, {})
+      local text = utils.join_lines(
+        vim.api.nvim_buf_get_lines(preview_buffer, 0, -1, true)
+      )
+      vim.fn.setreg("+", text)
+      actions.close(prompt_buffer)
+    end)
 
-      map("i", "<c-p>", function()
-        local text = vim.api.nvim_buf_get_lines(preview_buffer, 0, -1, true)
-        utils.buffer_replace_selection(text, { buffer = buffer_id })
-        actions.close(prompt_buffer)
-      end)
+    map("i", "<c-p>", function()
+      local text = vim.api.nvim_buf_get_lines(preview_buffer, 0, -1, true)
+      utils.buffer_replace_selection(text)
+      actions.close(prompt_buffer)
+    end)
 
-      actions.select_default:replace(function()
-        utils.buffer_replace_content("loading...", { buffer = preview_buffer })
-        ---@type {value: {endpoint: string}}
-        local entry = actions_state.get_selected_entry()
-        local json_object = entry.value
-        local send = function(model)
-          if not model then
-            return
-          end
-          ---@type AnthropicChatRequest
-          local prompt = json_object
-          prompt.model = model
-          prompt:send(function(err, output)
-            ---@type string?
-            local text = err or output.content[1].text
-            if text then
-              if prompt.trim_result then
-                text = vim.trim(text)
-              end
-              if vim.api.nvim_buf_is_valid(preview_buffer) then
-                utils.buffer_replace_content(text, { buffer = preview_buffer })
-              end
-            end
-          end)
+    actions.select_default:replace(function()
+      utils.buffer_replace_content("loading...", { buffer = preview_buffer })
+      ---@type {value: {endpoint: string, model: string|string[]}}
+      local entry = actions_state.get_selected_entry()
+      local json_object = entry.value
+      local send = function(model)
+        if not model then
+          return
         end
-        choice_model(entry.value.model, send)
-      end)
+        ---@type AnthropicChatRequest
+        local prompt = json_object
+        prompt.model = model
+        prompt:send(function(err, output)
+          ---@type string?
+          local text = err or output.content[1].text
+          if text then
+            if prompt.trim_result then
+              text = vim.trim(text)
+            end
+            if vim.api.nvim_buf_is_valid(preview_buffer) then
+              utils.buffer_replace_content(text, { buffer = preview_buffer })
+            end
+          end
+        end)
+      end
+      choice_model(entry.value.model, send)
+    end)
 
-      return true
-    end,
-  }
-
+    return true
+  end
   pickers
     .new(opts, {
       prompt_title = "prompter",

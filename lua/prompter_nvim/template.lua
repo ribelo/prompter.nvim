@@ -9,15 +9,17 @@ local M = {}
 ---@param opts? { buffer?: number; win?: number }
 local function get_basic_params(opts)
   local params = {}
-  local buffnr = utils.get_buffer_id(opts)
+  local buffnr = vim.api.nvim_get_current_buf()
+  local winnr = vim.api.nvim_get_current_win()
 
-  params.cwd = vim.fn.getcwd(utils.get_win_id(opts))
+  params.cwd = vim.fn.getcwd(winnr)
   params.filepath = vim.api.nvim_buf_get_name(buffnr)
   params.filename = params.filepath:match(".+/([^/]+)$")
   ---@type string
   params.filetype = pf.detect_from_extension(params.filepath)
   ---@type string
   params.commentstring =
+    -- vim.api.nvim_get_option_value("commentstring", {}):gsub("%%s", "")
     vim.api.nvim_buf_get_option(buffnr, "commentstring"):gsub("%%s", "")
 
   return params
@@ -28,7 +30,6 @@ end
 ---@param opts? table
 ---@returns string
 M.fill_template = function(text, opts)
-  vim.print({ text = text })
   local params = vim.tbl_extend(
     "force",
     opts or {},

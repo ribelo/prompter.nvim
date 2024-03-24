@@ -1,132 +1,117 @@
 local M = {}
 
----Get the buffer id from the options
----@param opts? {buffer?: number, win?: number}
----@return number
-M.get_buffer_id = function(opts)
-  if opts and opts.buffer then
-    return opts.buffer
-  end
-
-  if opts and opts.win then
-    return vim.api.nvim_win_get_buf(opts.win)
-  end
-
-  return vim.api.nvim_get_current_buf()
-end
-
----Get the window id from the options
----@param opts? {win?: number}
----@return number
-M.get_win_id = function(opts)
-  local win_id = opts and opts.win or vim.api.nvim_get_current_win()
-  return win_id
-end
-
 ---Get the visual range of the current buffer.
----@param opts? {buffer?: number, win?: number}
----@return {start_row: number, start_col: number, end_row: number, end_col: number}
-M.get_visual_range = function(opts)
-  local buffer_id = M.get_buffer_id(opts)
-  local start_pos = vim.api.nvim_buf_get_mark(buffer_id, "<")
-  local start_row = start_pos[1] - 1
-  local start_col = start_pos[2]
-  local end_pos = vim.api.nvim_buf_get_mark(buffer_id, ">")
-  local end_row = end_pos[1] - 1
-  local last_line =
-    vim.api.nvim_buf_get_lines(buffer_id, end_row, end_row + 1, true)[1]
-  local end_col = #last_line
-  return {
-    start_row = start_row,
-    start_col = start_col,
-    end_row = end_row,
-    end_col = end_col,
-  }
-end
+---@return {start_row: number, start_col: number, end_row: number, end_col: number}|nil
+function M.get_visual_range()
+  ---@type number, number, number
+  local _, srow, scol = unpack(vim.fn.getpos("v"))
+  ---@type number, number, number
+  local _, erow, ecol = unpack(vim.fn.getpos("."))
 
----Get selected text
----@param opts? {buffer?: number, win?: number}
-M.get_selected_text = function(opts)
-  local range = M.get_visual_range(opts)
-  local buffer_id = M.get_buffer_id(opts)
-
-  return vim.api.nvim_buf_get_text(
-    buffer_id,
-    range.start_row,
-    range.start_col,
-    range.end_row,
-    range.end_col,
-    {}
-  )
-end
-
----Get the range of the context befor the cursor
----@param opts {buffer?: number, win?: number, context_size: number}
----@return {start_row: number, start_col: number, end_row: number, end_col: number}
-function M.get_context_range(opts)
-  assert(opts.context_size, "context size is nil")
-
-  local win_id = M.get_win_id(opts)
-  local buffer_id = M.get_buffer_id(opts)
-
-  local start_row, start_col, end_row, end_col
-  local cursor_pos = vim.api.nvim_win_get_cursor(win_id)
-
-  -- Calculate the start row by subtracting the context size from the current row
-  start_row = math.max(0, cursor_pos[1] - 1 - opts.context_size)
-  start_col = 0
-  end_row = cursor_pos[1] - 1
-
-  -- Get the last line of the buffer
-  local last_line =
-    vim.api.nvim_buf_get_lines(buffer_id, end_row, end_row + 1, true)[1]
-  -- Calculate the end column by getting the length of the last line
-  end_col = #last_line
-
-  -- Return a table containing the start row, start column, end row, and end column
-  return {
-    start_row = start_row,
-    start_col = start_col,
-    end_row = end_row,
-    end_col = end_col,
-  }
-end
-
----Get text range for smart selection
----@param opts {is_visual_mode?: boolean, context_size?: number, buffer?: number, win?: number}
-M.smart_get_text_range = function(opts)
-  assert(
-    opts.is_visual_mode or opts.context_size,
-    "is_visual_mode or context_size should be specified"
-  )
-  if opts.is_visual_mode then
-    return M.get_visual_range()
-  elseif opts.context_size then
-    ---@diagnostic disable-next-line: param-type-mismatch
-    return M.get_context_range(opts)
+  if vim.fn.mode() == "V" then
+    if srow > erow then
+      srow, erow = erow, srow
+    end
+    scol, ecol = 1, vim.fn.col({ erow, "$" })
+  elseif vim.fn.mode() == "v" then
+    if srow > erow or (srow == erow and scol > ecol) then
+      srow, erow, scol, ecol = erow, srow, ecol, scol
+    end
+  elseif vim.fn.mode() == "\22" then
+    if srow > erow then
+      srow, erow = erow, srow
+    end
+    if scol > ecol then
+      scol, ecol = ecol, scol
+    end
+  else
+    return
   end
+
+  return {
+    start_row = srow - 1,
+    start_col = scol - 1,
+    end_row = erow - 1,
+    end_col = ecol,
+  }
 end
 
----Get text from the current buffer.
----@param opts {is_visual_mode?: boolean, context_size?: number, buffer?: number, win?: number}
-M.smart_get_text = function(opts)
-  local range = M.smart_get_text_range(opts)
-  local buffer_id = M.get_buffer_id(opts)
-  return vim.api.nvim_buf_get_text(
-    buffer_id,
-    range.start_row,
-    range.start_col,
-    range.end_row,
-    range.end_col,
-    {}
-  )
+--- Return the visually selected text as an array with an entry for each line
+---
+--- @return string[]|nil lines The selected text as an array of lines.
+function M.get_selected_text()
+  ---@type number, number, number
+  local _, srow, scol = unpack(vim.fn.getpos("v"))
+  ---@type number, number, number
+  local _, erow, ecol = unpack(vim.fn.getpos("."))
+
+  -- visual line mode
+  if vim.fn.mode() == "V" then
+    if srow > erow then
+      return vim.api.nvim_buf_get_lines(0, erow - 1, srow, true)
+    else
+      return vim.api.nvim_buf_get_lines(0, srow - 1, erow, true)
+    end
+  end
+
+  -- regular visual mode
+  if vim.fn.mode() == "v" then
+    if srow < erow or (srow == erow and scol <= ecol) then
+      return vim.api.nvim_buf_get_text(
+        0,
+        srow - 1,
+        scol - 1,
+        erow - 1,
+        ecol,
+        {}
+      )
+    else
+      return vim.api.nvim_buf_get_text(
+        0,
+        erow - 1,
+        ecol - 1,
+        srow - 1,
+        scol,
+        {}
+      )
+    end
+  end
+
+  -- visual block mode
+  if vim.fn.mode() == "\22" then
+    local lines = {}
+    if srow > erow then
+      srow, erow = erow, srow
+    end
+    if scol > ecol then
+      scol, ecol = ecol, scol
+    end
+    for i = srow, erow do
+      table.insert(
+        lines,
+        vim.api.nvim_buf_get_text(
+          0,
+          i - 1,
+          math.min(scol - 1, ecol),
+          i - 1,
+          math.max(scol - 1, ecol),
+          {}
+        )[1]
+      )
+    end
+    return lines
+  end
 end
 
 ---Join the given lines in a string.
----@param lines string[]
+---@param lines string[]|nil
 ---@return string
 M.join_lines = function(lines)
   local text = ""
+  if lines == nil then
+    return text
+  end
+  ---@cast lines string[]
   for i, line in ipairs(lines) do
     text = text .. line
     if i < #lines then
@@ -139,6 +124,7 @@ end
 
 ---Ensure that the given text is a string
 ---@param text string|string[]
+---@return string|nil
 M.ensure_get_text = function(text)
   if type(text) == "string" then
     return text
@@ -146,7 +132,7 @@ M.ensure_get_text = function(text)
     return M.join_lines(text)
   else
     error(string.format("invalid text type: %s", type(text)))
-    ---@diagnostic disable-next-line: missing-return
+    return
   end
 end
 
@@ -163,32 +149,44 @@ end
 M.ensure_get_lines = function(text)
   if type(text) == "string" then
     -- Split the text into lines
-    return M.split_text(text)
+    return vim.split(text, "\n", {})
   elseif type(text) == "table" then
     -- Return the lines as-is
     return text
   else
-    -- Throw an error if the text is not a string or table
-    assert(false, string.format("invalid text type: %s", type(text)))
-    ---@diagnostic disable-next-line: missing-return
+    error(string.format("Invalid text type: %s", type(text)))
   end
 end
 
 ---Replace the content of the buffer with the given text.
 ---@param text string|string[]
----@param opts? {buffer?: number, win?: number}
+---@param opts? {buffer?: number}
 M.buffer_replace_content = function(text, opts)
-  local buffer_id = M.get_buffer_id(opts)
+  ---@type number
+  local buffer_id
+  if opts and opts.buffer then
+    buffer_id = opts.buffer
+  else
+    buffer_id = vim.api.nvim_get_current_buf()
+  end
   local lines = M.ensure_get_lines(text)
-  vim.api.nvim_buf_set_lines(buffer_id, 0, -1, true, lines)
+  ---@cast buffer_id number
+  vim.api.nvim_buf_set_lines(buffer_id, 0, -1, false, lines)
 end
 
 ---Replace a range of text in a buffer.
 ---@param text string|string[]
----@param opts {start_row: number, start_col: number, end_row: number, end_col: number, buffer?: number, win?: number}
+---@param opts {start_row: number, start_col: number, end_row: number, end_col: number, buffer: number}
 M.buffer_replace_range = function(text, opts)
   local lines = M.ensure_get_lines(text)
-  local buffer_id = M.get_buffer_id(opts)
+  ---@type number
+  local buffer_id
+  if opts and opts.buffer then
+    buffer_id = opts.buffer
+  else
+    buffer_id = vim.api.nvim_get_current_buf()
+  end
+  ---@cast buffer_id number
   vim.api.nvim_buf_set_text(
     buffer_id,
     opts.start_row,
@@ -201,11 +199,14 @@ end
 
 ---Replaces the current selection with the given text.
 ---@param text string|string[] The text to be used to replace the current selection.
----@param opts {buffer?: number, win?: number} The options to be used when replacing the selection.
-M.buffer_replace_selection = function(text, opts)
+M.buffer_replace_selection = function(text)
   ---Retrieve the range of the visual selection.
   ---@diagnostic disable-next-line: param-type-mismatch
-  local range = M.get_visual_range(opts)
+  local range = M.get_visual_range()
+
+  if range == nil then
+    return
+  end
 
   ---Replaces the range of the visual selection with the provided text.
   M.buffer_replace_range(text, {
@@ -213,17 +214,15 @@ M.buffer_replace_selection = function(text, opts)
     start_col = range.start_col,
     end_row = range.end_row,
     end_col = range.end_col,
-    buffer = opts.buffer,
-    win = opts.win,
   })
 end
 
 ---Appends the given text to a given buffer at the provided position.
 ---@param text string|string[] The text to be appended to the buffer.
----@param opts {buffer?: number, win?: number, start_row: number} Options for the buffer append. 'start_row' is the row at which to insert the text; 'buffer' is the buffer to which the text should be added; 'win' is the window from which the buffer should be retrieved.
+---@param opts {start_row: number} Options for the buffer append. 'start_row' is the row at which to insert the text; 'buffer' is the buffer to which the text should be added; 'win' is the window from which the buffer should be retrieved.
 M.buffer_append_text = function(text, opts)
   local lines = M.ensure_get_lines(text)
-  local buffer_id = M.get_buffer_id(opts)
+  local buffer_id = vim.api.nvim_get_current_buf()
   vim.api.nvim_buf_set_text(
     buffer_id,
     opts.start_row + 1,
@@ -234,7 +233,7 @@ M.buffer_append_text = function(text, opts)
   )
 end
 
----@param  cmd_args table
+---@param cmd_args table
 ---@return boolean
 M.is_visual_mode = function(cmd_args)
   return cmd_args.range and cmd_args.range > 0

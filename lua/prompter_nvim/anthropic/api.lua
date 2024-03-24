@@ -68,7 +68,6 @@ M.exec = function(cmd, args, on_result)
 end
 
 M.call = function(endpoint, body, on_result)
-  vim.print({ body = body })
   local curl_args = {
     "-X",
     "POST",
@@ -87,7 +86,6 @@ M.call = function(endpoint, body, on_result)
     "-d",
     vim.json.encode(body),
   }
-  vim.print({ curl_args = curl_args })
   M.exec("curl", curl_args, function(err, output)
     if err then
       vim.print({ err = err })
@@ -101,7 +99,7 @@ M.call = function(endpoint, body, on_result)
       ---@field decode fun(str: string): any
       ---@field error JsonError
       local json = vim.json.decode(output)
-      vim.print({ json = json })
+      vim.print("request completed")
       if json.error then
         on_result(json.error.message, nil)
       else
