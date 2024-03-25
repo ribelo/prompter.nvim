@@ -48,46 +48,50 @@ end
 
 function Prompt:join()
   local result = {}
+
   if #self.chunks == 0 then
     return ""
   end
-  for i, chunk in ipairs(self.chunks) do
-    ---@type string
-    local tag
-    if chunk.tag and chunk.tag ~= "" then
-      tag = "<" .. chunk.tag .. ">"
-    else
-      tag = '<doc index="' .. i .. '">'
-    end
-    table.insert(result, tag)
 
-    if chunk.cwd and chunk.cwd ~= "" then
-      table.insert(result, "  <cwd>" .. self:escape_xml(chunk.cwd) .. "</cwd>")
-    end
+  local grouped_chunks = {}
 
-    if chunk.filepath and chunk.filepath ~= "" then
-      table.insert(
-        result,
-        "  <filepath>" .. self:escape_xml(chunk.filepath) .. "</filepath>"
-      )
-      local filetype = pf.detect_from_extension(chunk.filepath)
-      if filetype and filetype ~= "" then
-        table.insert(
-          result,
-          "  <filetype>" .. self:escape_xml(filetype) .. "</filetype>"
-        )
+  -- Group chunks by filepath
+  for _, chunk in ipairs(self.chunks) do
+    if not grouped_chunks[chunk.filepath] then
+      grouped_chunks[chunk.filepath] = {
+        tag_name = chunk.tag or "content",
+        cwd = chunk.cwd,
+        filetype = pf.detect_from_extension(chunk.filepath),
+        contents = {},
+      }
+    end
+    table.insert(grouped_chunks[chunk.filepath].contents, chunk.content)
+  end
+
+  -- Process grouped chunks
+  for filepath, chunk_data in pairs(grouped_chunks) do
+    local doc_tag = "<doc>"
+    table.insert(result, doc_tag)
+    local cwd_tag = "  <cwd>" .. chunk_data.cwd .. "</cwd>"
+    table.insert(result, cwd_tag)
+    local filepath_tag = "  <filepath>" .. filepath .. "</filepath>"
+    table.insert(result, filepath_tag)
+    local filetype_tag = "  <filetype>" .. chunk_data.filetype .. "</filetype>"
+    table.insert(result, filetype_tag)
+
+    table.insert(result, "  <contents>")
+    for _, content in ipairs(chunk_data.contents) do
+      if content and content ~= "" then
+        table.insert(result, "    <" .. chunk_data.tag_name .. ">")
+        table.insert(result, self:escape_xml(content))
+        table.insert(result, "    </" .. chunk_data.tag_name .. ">")
       end
     end
-
-    if chunk.content and chunk.content ~= "" then
-      table.insert(
-        result,
-        "  <content>" .. self:escape_xml(chunk.content) .. "</content>"
-      )
-    end
+    table.insert(result, "  </contents>")
 
     table.insert(result, "</doc>")
   end
+
   return table.concat(result, "\n")
 end
 
