@@ -5,11 +5,30 @@ local pf = require("plenary.filetype")
 ---@field cwd string
 ---@field filepath string
 ---@field tag string?
+---@field description string?
 
 ---@class Prompt
 ---@field chunks Chunk[]
 local Prompt = {}
 Prompt.__index = Prompt
+
+-- Function to find the minimum indentation of a string
+---@param str string
+local function get_min_indent(str)
+  ---@type string[]
+  local lines = {}
+  for line in str:gmatch("[^\n]+") do
+    table.insert(lines, line)
+  end
+
+  local min_indent = math.huge
+  for _, line in ipairs(lines) do
+    local indent = line:match("^%s*")
+    min_indent = math.min(min_indent, #indent)
+  end
+
+  return min_indent
+end
 
 local function escape_xml(text)
   return text
@@ -62,6 +81,7 @@ function Prompt:join()
     return ""
   end
 
+  ---@type {string: {cwd: string, filetype: string, chunks: Chunk[]}}
   local grouped_chunks = {}
 
   -- Group chunks by filepath
@@ -76,32 +96,53 @@ function Prompt:join()
     table.insert(grouped_chunks[chunk.filepath].chunks, chunk)
   end
 
-  -- Process grouped chunks
-  for filepath, chunk_group in pairs(grouped_chunks) do
-    local doc_tag = "<doc>"
-    table.insert(result, doc_tag)
-    local cwd_tag = "  <cwd>" .. chunk_group.cwd .. "</cwd>"
-    table.insert(result, cwd_tag)
-    local filepath_tag = "  <filepath>" .. filepath .. "</filepath>"
-    table.insert(result, filepath_tag)
-    local filetype_tag = "  <filetype>" .. chunk_group.filetype .. "</filetype>"
-    table.insert(result, filetype_tag)
+  table.insert(result, "<data>")
 
-    table.insert(result, "  <contents>")
-    for _, chunk in ipairs(chunk_group.chunks) do
-      local tag_name = chunk.tag or "content"
-      if chunk.content and chunk.content ~= "" then
-        table.insert(result, "    <" .. tag_name .. ">")
-        local escaped_content = escape_xml(chunk.content)
-        table.insert(result, escaped_content)
-        table.insert(result, "    </" .. tag_name .. ">")
+  -- Process grouped chunks
+  ---@param filepath string
+  for filepath, chunk_group in pairs(grouped_chunks) do
+    table.insert(result, "  <doc>")
+    table.insert(result, "    <metadata>")
+    table.insert(result, "      <cwd>" .. chunk_group.cwd .. "</cwd>")
+    table.insert(result, "      <filepath>" .. filepath .. "</filepath>")
+    table.insert(
+      result,
+      "      <filetype>" .. chunk_group.filetype .. "</filetype>"
+    )
+    table.insert(result, "    </metadata>")
+    table.insert(result, "    <content>")
+
+    for _, block in ipairs(chunk_group.chunks) do
+      if block.description and block.description ~= "" then
+        table.insert(result, "      <description>")
+        table.insert(result, "        " .. block.description)
+        table.insert(result, "      </description>")
+      end
+
+      local tag_name = block.tag or "block"
+      if block.content and block.content ~= "" then
+        table.insert(result, "      <" .. tag_name .. ">")
+
+        -- Find the minimum indentation of the content
+        local min_indent = get_min_indent(block.content)
+
+        -- Prepend each line of the content with " " and adjust indentation
+        local content_lines = {}
+        for line in block.content:gmatch("[^\n]+") do
+          local adjusted_line = line:sub(min_indent + 1)
+          table.insert(content_lines, "          " .. adjusted_line)
+        end
+
+        table.insert(result, table.concat(content_lines, "\n"))
+        table.insert(result, "      </" .. tag_name .. ">")
       end
     end
-    table.insert(result, "  </contents>")
+    table.insert(result, "    </content>")
 
-    table.insert(result, "</doc>")
+    table.insert(result, "  </doc>")
   end
 
+  table.insert(result, "</data>")
   return table.concat(result, "\n")
 end
 
