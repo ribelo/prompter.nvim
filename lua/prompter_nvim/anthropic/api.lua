@@ -2,6 +2,12 @@ local config = require("prompter_nvim/config")
 
 local M = {}
 
+M.models = {
+  "claude-3-opus-20240229",
+  "claude-3-haiku-20240307",
+  "claude-3-sonet-20240229",
+}
+
 ---@class CluadeResponse
 ---@field id string
 ---@field model string

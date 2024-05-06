@@ -239,4 +239,43 @@ M.is_visual_mode = function(cmd_args)
   return cmd_args.range and cmd_args.range > 0
 end
 
+---@param xml_string string
+---@param tag_list string[]
+---@return string
+M.extract_text_between_tags = function(xml_string, tag_list)
+  local result = {}
+
+  for _, tag in ipairs(tag_list) do
+    local start_tag = "<" .. tag .. ">"
+    local end_tag = "</" .. tag .. ">"
+
+    local start_pos = xml_string:find(start_tag)
+    while start_pos do
+      local end_pos = xml_string:find(end_tag, start_pos + 1)
+      if end_pos then
+        local text = xml_string:sub(start_pos + #start_tag, end_pos - 1)
+        table.insert(result, text)
+        start_pos = xml_string:find(start_tag, end_pos + 1)
+      else
+        start_pos = nil
+      end
+    end
+  end
+
+  return M.join_lines(result)
+end
+
+---@param xml_string string
+---@param tag_list string[]
+---@return string
+M.remove_tags = function(xml_string, tag_list)
+  for _, tag in ipairs(tag_list) do
+    local start_tag = "<" .. tag .. ">"
+    local end_tag = "</" .. tag .. ">"
+    xml_string = xml_string:gsub(start_tag, "")
+    xml_string = xml_string:gsub(end_tag, "")
+  end
+  return xml_string
+end
+
 return M

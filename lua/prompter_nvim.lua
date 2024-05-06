@@ -169,6 +169,71 @@ M.toggle_prompt_buffer = function()
   end
 end
 
+M.open_output_buffer = function()
+  -- Create a new window on the right
+  local output_win = vim.api.nvim_open_win(0, true, {
+    -- relative = "win",
+    win = 0,
+    split = "right",
+  })
+  -- Create a new buffer
+  local output_buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_win_set_buf(output_win, output_buf)
+  local output_lines = vim.split(browser.output, "\n")
+  vim.api.nvim_buf_set_lines(output_buf, 0, -1, false, output_lines)
+  -- Set the buffer options
+  vim.api.nvim_set_option_value("buftype", "nofile", { buf = output_buf })
+  vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = output_buf })
+  vim.api.nvim_set_option_value("swapfile", false, { buf = output_buf })
+  -- Set the buffer name
+  local output_buf_name = "prompter://output"
+  vim.api.nvim_buf_set_name(output_buf, output_buf_name)
+  -- Set the filetype to text
+  vim.api.nvim_set_option_value("filetype", "text", { buf = output_buf })
+  -- Set the window options
+  vim.api.nvim_set_option_value("number", false, { win = output_win })
+  vim.api.nvim_set_option_value("relativenumber", false, { win = output_win })
+  vim.api.nvim_set_option_value("wrap", true, { win = output_win })
+end
+
+M.close_output_buffer = function()
+  -- Find the output buffer by name
+  local output_buf_name = "prompter://output"
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_get_name(buf) == output_buf_name then
+      -- Delete the output buffer
+      vim.api.nvim_buf_delete(buf, { force = true })
+      -- Close the window associated with the output buffer
+      local wins = vim.api.nvim_list_wins()
+      for _, win in ipairs(wins) do
+        if vim.api.nvim_win_get_buf(win) == buf then
+          vim.api.nvim_win_close(win, false)
+          break
+        end
+      end
+      break
+    end
+  end
+end
+
+M.toggle_output_buffer = function()
+  -- Find the output buffer by name
+  local output_buf_name = "prompter://output"
+  local output_buf_exists = false
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_get_name(buf) == output_buf_name then
+      output_buf_exists = true
+      break
+    end
+  end
+  vim.print({ output = browser.output })
+  if output_buf_exists then
+    M.close_output_buffer()
+  else
+    M.open_output_buffer()
+  end
+end
+
 M.add_tag = tags.add_tag
 
 return M

@@ -1,11 +1,6 @@
 ---@diagnostic disable-next-line: no-unknown
-local openai = require("prompter_nvim.openai.api")
+local openai = require("prompter_nvim.groq.api")
 local template = require("prompter_nvim.template")
-
----@enum endpoints
-local ENDPOINTS = {
-  "messages",
-}
 
 ---@enum roles
 local ROLES = {
@@ -16,7 +11,7 @@ local ROLES = {
 ---@alias message {role: roles, content: string|{type: string, text: string}[]}
 ---@alias on_result fun(err: string, output: string)
 
----@class OpenAiChatCompletionRequest
+---@class GroqChatCompletionRequest
 ---@field model string
 ---@field system string
 ---@field messages message[]
@@ -27,15 +22,15 @@ local ROLES = {
 ---@field temperature number
 ---@field top_p number
 ---@field top_k integer
-local OpenAiChatCompletionRequest = {}
-OpenAiChatCompletionRequest.__index = OpenAiChatCompletionRequest
+local GroqChatCompletionRequest = {}
+GroqChatCompletionRequest.__index = GroqChatCompletionRequest
 
-function OpenAiChatCompletionRequest:new(o)
+function GroqChatCompletionRequest:new(o)
   return setmetatable(o, self)
 end
 
----@param on_result fun(err: string, response: OpenAiCompletionsResponse|OpenAiEditsResponse|OpenAiChatResponse)
-function OpenAiChatCompletionRequest:send(on_result)
+---@param on_result fun(err: string, response: any)
+function GroqChatCompletionRequest:send(on_result)
   local body = {
     model = self.model,
     messages = {},
@@ -81,7 +76,7 @@ function OpenAiChatCompletionRequest:send(on_result)
 end
 
 ---@param params table?
-function OpenAiChatCompletionRequest:fill(params)
+function GroqChatCompletionRequest:fill(params)
   if self.messages == nil then
     return
   end
@@ -94,4 +89,4 @@ function OpenAiChatCompletionRequest:fill(params)
   end
 end
 
-return OpenAiChatCompletionRequest
+return GroqChatCompletionRequest
