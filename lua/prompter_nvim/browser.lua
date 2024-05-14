@@ -67,10 +67,8 @@ local function read_yaml(file_path)
     )
     return nil
   end
-
   local content = file:read("*all")
   file:close()
-
   local success, result = pcall(yaml.deserialize, content)
   if not success then
     vim.notify(
@@ -79,13 +77,10 @@ local function read_yaml(file_path)
     )
     return nil
   end
-
-  local prompt = result
-  if not prompt.name then
-    prompt.name = file_path:match(".+/(.+)%..+"):gsub("_", " ")
+  if not result.name then
+    result.name = file_path:match(".+/(.+)%..+"):gsub("_", " ")
   end
-
-  return prompt
+  return result
 end
 
 ---@return {endpoint: string}[]
@@ -114,29 +109,17 @@ end
 local function choose_model_and_vendor(prompt, on_choice)
   local Menu = require("nui.menu")
 
-  ---@param title string
-  ---@param lines string[]
-  ---@param on_submit fun(item: NuiTree.Node)
-  ---@return NuiMenu
-  local create_menu = function(title, lines, on_submit)
+  local function create_menu(title, lines, on_submit)
     return Menu({
       zindex = 1000,
       relative = "editor",
       position = "50%",
-      size = {
-        width = 25,
-        height = #lines,
-      },
+      size = { width = 25, height = #lines },
       border = {
         style = "rounded",
-        text = {
-          top = " " .. title .. " ",
-          top_align = "center",
-        },
+        text = { top = " " .. title .. " ", top_align = "center" },
       },
-      win_options = {
-        winhighlight = "Normal:Normal,FloatBorder:Normal",
-      },
+      win_options = { winhighlight = "Normal:Normal,FloatBorder:Normal" },
     }, {
       lines = lines,
       max_width = 20,
@@ -150,7 +133,7 @@ local function choose_model_and_vendor(prompt, on_choice)
     })
   end
 
-  local get_models = function(vendor)
+  local function get_models(vendor)
     if vendor == "anthropic" then
       return anthropic_api.models
     elseif vendor == "openai" then
@@ -159,14 +142,14 @@ local function choose_model_and_vendor(prompt, on_choice)
       return groq_api.models
     else
       vim.notify(
-        "Invalid vendor. Please choose either 'anthropic' or 'openai'",
+        "Invalid vendor. Please choose either 'anthropic', 'openai' or 'groq'",
         vim.log.levels.ERROR
       )
       return {}
     end
   end
 
-  local on_choice_inner = function()
+  local function on_choice_inner()
     if prompt.vendor == "anthropic" then
       on_choice(AnthropicChatRequest:new(prompt))
     elseif prompt.vendor == "openai" then
@@ -175,22 +158,18 @@ local function choose_model_and_vendor(prompt, on_choice)
       on_choice(GroqChatCompletionRequest:new(prompt))
     else
       vim.notify(
-        "Invalid vendor. Please choose either 'anthropic' or 'openai'",
+        "Invalid vendor. Please choose either 'anthropic', 'openai' or 'groq'",
         vim.log.levels.ERROR
       )
     end
   end
 
-  local choose_model = function(vendor)
-    local lines = vim.tbl_map(function(model)
-      return Menu.item(model)
-    end, get_models(vendor))
-    ---@param model string
+  local function choose_model(vendor)
+    local lines = vim.tbl_map(Menu.item, get_models(vendor))
     local menu = create_menu("Choose a Model", lines, function(item)
       prompt.model = item.text
       on_choice_inner()
     end)
-
     vim.schedule(function()
       vim.api.nvim_feedkeys(
         vim.api.nvim_replace_termcodes("<ESC>", true, false, true),
@@ -200,21 +179,16 @@ local function choose_model_and_vendor(prompt, on_choice)
       menu:mount()
     end)
   end
-  local choose_vendor = function()
+
+  local function choose_vendor()
     if type(prompt.vendor) == "string" then
-      choose_model()
-      return
-    end
-    if type(prompt.vendor) == "table" then
-      ---@param vendor string
-      local lines = vim.tbl_map(function(vendor)
-        return Menu.item(vendor)
-      end, prompt.vendor)
+      choose_model(prompt.vendor)
+    elseif type(prompt.vendor) == "table" then
+      local lines = vim.tbl_map(Menu.item, prompt.vendor)
       local menu = create_menu("Choose a Vendor", lines, function(item)
         prompt.vendor = item.text
         choose_model(prompt.vendor)
       end)
-
       vim.schedule(function()
         vim.api.nvim_feedkeys(
           vim.api.nvim_replace_termcodes("<ESC>", true, false, true),
@@ -225,6 +199,7 @@ local function choose_model_and_vendor(prompt, on_choice)
       end)
     end
   end
+
   choose_vendor()
 end
 
@@ -237,12 +212,11 @@ M.show_browser = function(args)
   local prompts = get_saved_prompts()
   local prepend_output = ""
 
+  ---@param entry {value: {name: string}, name: string}
   local entry_maker = function(entry)
     return {
       value = entry,
-      ---@type string
       display = entry.name,
-      ---@type string
       ordinal = entry.name,
     }
   end
@@ -258,49 +232,33 @@ M.show_browser = function(args)
     ---@param entry {value: {endpoint: string}}
     preview_fn = function(_, entry, status)
       local json_object = entry.value
-
       local previewer_buffer = vim.api.nvim_win_get_buf(status.preview_win)
-      ---@type string[]
       local content = {}
-
       local prompt = AnthropicChatRequest:new(json_object)
-      ---@type {buffer: number, win: number, content?: string}
       local template_params = {
         buffer = buffer_id,
         win = win_id,
         content = pre_prompt,
       }
-
       if selected_text and #selected_text > 0 then
         template_params.content = template_params.content
           .. "\n"
           .. selected_text
       end
-
       prompt:fill(template_params)
-
       if prompt.system then
         table.insert(content, "system: ")
         vim.list_extend(content, utils.ensure_get_lines(prompt.system))
         table.insert(content, "")
       end
-
       for _, message in ipairs(prompt.messages) do
-        if message.role == "user" then
-          table.insert(content, "user: ")
-          table.insert(content, "")
-        elseif message.role == "assistant" then
-          table.insert(content, "assistant: ")
-          table.insert(content, "")
-        end
-
+        table.insert(content, message.role .. ": ")
+        table.insert(content, "")
         if type(message.content) == "string" then
-          ---@diagnostic disable-next-line: cast-type-mismatch, param-type-mismatch
           for line in message.content:gmatch("[^\n]+") do
             table.insert(content, line)
           end
         elseif type(message.content) == "table" then
-          ---@diagnostic disable-next-line: cast-type-mismatch, param-type-mismatch
           for _, item in ipairs(message.content) do
             if type(item) == "table" and item.type == "text" then
               table.insert(content, item.text)
@@ -309,10 +267,8 @@ M.show_browser = function(args)
             end
           end
         end
-
         table.insert(content, "")
       end
-
       vim.api.nvim_buf_set_lines(previewer_buffer, 0, -1, false, content)
     end,
   })
@@ -327,7 +283,6 @@ M.show_browser = function(args)
     local preview_buffer = vim.api.nvim_win_get_buf(picker.preview_win)
     ---@type number
     local prompt_buffer = picker.prompt_bufnr
-
     map("i", "<c-y>", function()
       vim.notify("yanked result", vim.log.levels.INFO, {})
       local text = utils.join_lines(
@@ -336,13 +291,11 @@ M.show_browser = function(args)
       vim.fn.setreg("+", text)
       actions.close(prompt_buffer)
     end)
-
     map("i", "<c-p>", function()
       local text = vim.api.nvim_buf_get_lines(preview_buffer, 0, -1, true)
       utils.buffer_replace_selection(text)
       actions.close(prompt_buffer)
     end)
-
     actions.select_default:replace(function()
       utils.buffer_replace_content("loading...", { buffer = preview_buffer })
       ---@type {value: {endpoint: string, model: string|string[], messages: {role: string, content: string|string[]}[], tags: string[]|nil}}
@@ -352,7 +305,6 @@ M.show_browser = function(args)
         ---@type string
         prepend_output = json_object.messages[#json_object.messages].content
       end
-
       local send = function(prompt)
         prompt:send(function(err, output)
           ---@type string?
@@ -380,12 +332,11 @@ M.show_browser = function(args)
           end
         end)
       end
-
       choose_model_and_vendor(entry.value, send)
     end)
-
     return true
   end
+
   pickers
     .new(opts, {
       prompt_title = "prompter",

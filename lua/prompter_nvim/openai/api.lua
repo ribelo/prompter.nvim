@@ -2,7 +2,9 @@ local config = require("prompter_nvim/config")
 
 local M = {}
 M.models = {
+  "gpt-4o",
   "gpt-4-turbo-2024-04-09",
+  "gpt-3.5-turbo",
 }
 
 ---@alias completion_choice {text: string, index: integer, logprobs: any?, finish_reason: string}

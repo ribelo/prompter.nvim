@@ -3,7 +3,7 @@ local pf = require("plenary.filetype")
 ---@class Chunk
 ---@field content string
 ---@field cwd string
----@field filepath string
+---@field file_path string
 ---@field tag string?
 ---@field description string?
 
@@ -81,33 +81,36 @@ function Prompt:join()
     return ""
   end
 
-  ---@type {string: {cwd: string, filetype: string, chunks: Chunk[]}}
+  ---@type {string: {cwd: string, file_type: string, chunks: Chunk[]}}
   local grouped_chunks = {}
 
-  -- Group chunks by filepath
+  -- Group chunks by file_path
   for _, chunk in ipairs(self.chunks) do
-    if not grouped_chunks[chunk.filepath] then
-      grouped_chunks[chunk.filepath] = {
+    if not grouped_chunks[chunk.file_path] then
+      grouped_chunks[chunk.file_path] = {
         cwd = chunk.cwd,
-        filetype = pf.detect_from_extension(chunk.filepath),
+        file_type = pf.detect_from_extension(chunk.file_path),
         chunks = {},
       }
     end
-    table.insert(grouped_chunks[chunk.filepath].chunks, chunk)
+    table.insert(grouped_chunks[chunk.file_path].chunks, chunk)
   end
 
   table.insert(result, "<data>")
 
   -- Process grouped chunks
-  ---@param filepath string
-  for filepath, chunk_group in pairs(grouped_chunks) do
-    table.insert(result, "  <doc>")
+  ---@param file_path string
+  for file_path, chunk_group in pairs(grouped_chunks) do
+    table.insert(result, "  <document>")
     table.insert(result, "    <metadata>")
-    table.insert(result, "      <cwd>" .. chunk_group.cwd .. "</cwd>")
-    table.insert(result, "      <filepath>" .. filepath .. "</filepath>")
     table.insert(
       result,
-      "      <filetype>" .. chunk_group.filetype .. "</filetype>"
+      "      <working_directory>" .. chunk_group.cwd .. "</working_directory>"
+    )
+    table.insert(result, "      <file_path>" .. file_path .. "</file_path>")
+    table.insert(
+      result,
+      "      <file_type>" .. chunk_group.file_type .. "</file_type>"
     )
     table.insert(result, "    </metadata>")
     table.insert(result, "    <content>")
@@ -119,7 +122,7 @@ function Prompt:join()
         table.insert(result, "      </description>")
       end
 
-      local tag_name = block.tag or "block"
+      local tag_name = block.tag or "code_block"
       if block.content and block.content ~= "" then
         table.insert(result, "      <" .. tag_name .. ">")
 
@@ -139,7 +142,7 @@ function Prompt:join()
     end
     table.insert(result, "    </content>")
 
-    table.insert(result, "  </doc>")
+    table.insert(result, "  </document>")
   end
 
   table.insert(result, "</data>")
