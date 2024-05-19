@@ -72,7 +72,7 @@ M.setup = function(opts)
 end
 
 ---@param tag string|nil
-M.push_prompt = function(tag, description)
+M.push_prompt = function(tag, instruction)
   ---@type Chunk
   if tag ~= "" then
     local chunk = {
@@ -80,7 +80,7 @@ M.push_prompt = function(tag, description)
       file_path = vim.api.nvim_buf_get_name(0),
       content = utils.join_lines(utils.get_selected_text()),
       tag = tag,
-      description = description,
+      instruction = instruction,
     }
     prompt:push(chunk)
   end

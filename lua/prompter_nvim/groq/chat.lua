@@ -6,6 +6,7 @@ local template = require("prompter_nvim.template")
 local ROLES = {
   "user",
   "assistant",
+  "model",
 }
 
 ---@alias message {role: roles, content: string|{type: string, text: string}[]}

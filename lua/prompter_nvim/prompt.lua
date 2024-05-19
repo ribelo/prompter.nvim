@@ -5,7 +5,7 @@ local pf = require("plenary.filetype")
 ---@field cwd string
 ---@field file_path string
 ---@field tag string?
----@field description string?
+---@field instruction string?
 
 ---@class Prompt
 ---@field chunks Chunk[]
@@ -116,15 +116,17 @@ function Prompt:join()
     table.insert(result, "    <content>")
 
     for _, block in ipairs(chunk_group.chunks) do
-      if block.description and block.description ~= "" then
-        table.insert(result, "      <description>")
-        table.insert(result, "        " .. block.description)
-        table.insert(result, "      </description>")
+      local tag_name = block.tag or "context"
+      table.insert(result, "      <" .. tag_name .. ">")
+      if block.instruction and block.instruction ~= "" then
+        table.insert(result, "        <instruction>")
+        table.insert(result, "          " .. block.instruction)
+        table.insert(result, "        </instruction>")
       end
 
-      local tag_name = block.tag or "code_block"
+      local tag_name = block.tag or "context"
       if block.content and block.content ~= "" then
-        table.insert(result, "      <" .. tag_name .. ">")
+        table.insert(result, "        <block>")
 
         -- Find the minimum indentation of the content
         local min_indent = get_min_indent(block.content)
@@ -133,12 +135,13 @@ function Prompt:join()
         local content_lines = {}
         for line in block.content:gmatch("[^\n]+") do
           local adjusted_line = line:sub(min_indent + 1)
-          table.insert(content_lines, "          " .. adjusted_line)
+          table.insert(content_lines, "            " .. adjusted_line)
         end
 
         table.insert(result, table.concat(content_lines, "\n"))
-        table.insert(result, "      </" .. tag_name .. ">")
+        table.insert(result, "        </block>")
       end
+      table.insert(result, "      </" .. tag_name .. ">")
     end
     table.insert(result, "    </content>")
 

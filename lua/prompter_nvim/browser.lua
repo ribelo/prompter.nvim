@@ -5,9 +5,11 @@ local yaml = require("prompter_nvim.yaml")
 local AnthropicChatRequest = require("prompter_nvim.anthropic.chat")
 local OpenAiChatCompletionRequest = require("prompter_nvim.openai.chat")
 local GroqChatCompletionRequest = require("prompter_nvim.groq.chat")
+local GeminiChatCompletionRequest = require("prompter_nvim.google.chat")
 local anthropic_api = require("prompter_nvim.anthropic.api")
 local openai_api = require("prompter_nvim.openai.api")
 local groq_api = require("prompter_nvim.groq.api")
+local google_api = require("prompter_nvim.google.api")
 local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
 local previewers = require("telescope.previewers")
@@ -105,7 +107,7 @@ local function get_saved_prompts()
 end
 
 ---@param prompt {model: string|string[], vendor: string|string[]}
----@param on_choice fun(prompt: AnthropicChatRequest | OpenAiChatCompletionRequest | GroqChatCompletionRequest)
+---@param on_choice fun(prompt: AnthropicChatRequest | OpenAiChatCompletionRequest | GroqChatCompletionRequest | GeminiChatCompletionRequest)
 local function choose_model_and_vendor(prompt, on_choice)
   local Menu = require("nui.menu")
 
@@ -140,6 +142,8 @@ local function choose_model_and_vendor(prompt, on_choice)
       return openai_api.models
     elseif vendor == "groq" then
       return groq_api.models
+    elseif vendor == "google" then
+      return google_api.models
     else
       vim.notify(
         "Invalid vendor. Please choose either 'anthropic', 'openai' or 'groq'",
@@ -156,6 +160,8 @@ local function choose_model_and_vendor(prompt, on_choice)
       on_choice(OpenAiChatCompletionRequest:new(prompt))
     elseif prompt.vendor == "groq" then
       on_choice(GroqChatCompletionRequest:new(prompt))
+    elseif prompt.vendor == "google" then
+      on_choice(GeminiChatCompletionRequest:new(prompt))
     else
       vim.notify(
         "Invalid vendor. Please choose either 'anthropic', 'openai' or 'groq'",
@@ -311,11 +317,14 @@ M.show_browser = function(args)
           vim.print({ err = err, output = output })
           local text = err
             or (output.content and output.content[1] and output.content[1].text)
+            or (output.choices and output.choices[1] and output.choices[1].message and output.choices[1].message.content)
             or (
-              output.choices
-              and output.choices[1]
-              and output.choices[1].message
-              and output.choices[1].message.content
+              output.candidates
+              and output.candidates[1]
+              and output.candidates[1].content
+              and output.candidates[1].content.parts
+              and output.candidates[1].content.parts[1]
+              and output.candidates[1].content.parts[1].text
             )
           if text then
             if prompt.remove_tags then
