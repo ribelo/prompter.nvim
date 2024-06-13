@@ -174,6 +174,20 @@ M.buffer_replace_content = function(text, opts)
   vim.api.nvim_buf_set_lines(buffer_id, 0, -1, false, lines)
 end
 
+--- Add content at the end of the buffer.
+---@param text string|string[]
+---@param opts? {buffer?: number}
+M.buffer_add_content = function(text, opts)
+  local buffer_id = opts and opts.buffer or vim.api.nvim_get_current_buf()
+  local lines = M.ensure_get_lines(text)
+
+  -- Get the number of lines in the current buffer
+  local num_lines = vim.api.nvim_buf_line_count(buffer_id)
+
+  -- Append lines to the end of the buffer
+  vim.api.nvim_buf_set_lines(buffer_id, num_lines, num_lines, false, lines)
+end
+
 ---Replace a range of text in a buffer.
 ---@param text string|string[]
 ---@param opts {start_row: number, start_col: number, end_row: number, end_col: number, buffer: number}
@@ -276,6 +290,24 @@ M.remove_tags = function(xml_string, tag_list)
     xml_string = xml_string:gsub(end_tag, "")
   end
   return xml_string
+end
+
+---@param xml_string string
+---@return string
+M.unescape_xml = function(xml_string)
+  xml_string = xml_string:gsub("&lt;", "<")
+  xml_string = xml_string:gsub("&gt;", ">")
+  xml_string = xml_string:gsub("&amp;", "&")
+  xml_string = xml_string:gsub("&apos;", "'")
+  xml_string = xml_string:gsub("&quot;", '"')
+  return xml_string
+end
+
+--- Generates a random string to be used as an ID.
+---
+--- @return string A random string.
+M.generate_random_id = function()
+  return tostring(os.time()) .. "-" .. tostring(math.random(100000, 999999))
 end
 
 return M

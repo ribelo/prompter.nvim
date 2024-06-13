@@ -150,6 +150,14 @@ local tokenize = function(str)
           end
 
           if indentAmount ~= 0 then
+            vim.print({
+              lastIndents = lastIndents,
+              indents = indents,
+              indentAmount = indentAmount,
+              t1 = #token[2][1],
+              t2 = token[2][1],
+              t3 = token[2],
+            })
             indents = (#token[2][1] / indentAmount)
           else
             indents = 0
@@ -158,6 +166,7 @@ local tokenize = function(str)
           if indents == lastIndents then
             ignore = true
           elseif indents > lastIndents + 2 then
+            vim.print({ token = token[1], str = str })
             error(
               "SyntaxError: invalid indentation, got "
                 .. tostring(indents)

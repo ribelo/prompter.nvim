@@ -67,6 +67,8 @@ M.exec = function(cmd, args, on_result)
   end
 end
 
+local config = config.get()
+
 M.call = function(body, on_result)
   local curl_args = {
     "-X",

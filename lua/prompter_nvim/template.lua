@@ -30,6 +30,7 @@ end
 ---@param opts? table
 ---@returns string
 M.fill_template = function(text, opts)
+  local config = config.get()
   local params = vim.tbl_extend(
     "force",
     opts or {},

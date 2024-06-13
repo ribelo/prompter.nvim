@@ -1,159 +1,82 @@
-local pf = require("plenary.filetype")
-
----@class Chunk
----@field content string
----@field cwd string
----@field file_path string
----@field tag string?
----@field instruction string?
+---@type table
+local lyaml = require("lyaml")
 
 ---@class Prompt
----@field chunks Chunk[]
+---@field vendor string | string[] List of vendors.
+---@field model string? Model.
+---@field max_tokens integer? Maximum number of tokens.
+---@field temperature number? Temperature setting.
+---@field stop_sequences string[]? The set of character sequences that will stop output generation
+---@field remove string[] List of string to remove.
+---@field system string System message.
+---@field messages Message[] List of messages.
+--- Prompt class definition
 local Prompt = {}
 Prompt.__index = Prompt
 
--- Function to find the minimum indentation of a string
----@param str string
-local function get_min_indent(str)
-  ---@type string[]
-  local lines = {}
-  for line in str:gmatch("[^\n]+") do
-    table.insert(lines, line)
-  end
-
-  local min_indent = math.huge
-  for _, line in ipairs(lines) do
-    local indent = line:match("^%s*")
-    min_indent = math.min(min_indent, #indent)
-  end
-
-  return min_indent
+--- @param data Prompt Initial data for TranslatorConfig.
+--- @return Prompt New instance of TranslatorConfig.
+function Prompt.new(data)
+  data = data or {}
+  setmetatable(data, Prompt)
+  return data
 end
 
-local function escape_xml(text)
-  return text
-    :gsub("&", "&amp;")
-    :gsub("<", "&lt;")
-    :gsub(">", "&gt;")
-    :gsub("'", "&apos;")
-    :gsub('"', "&quot;")
+---@class Message
+---@field role string Role of the message sender
+---@field content string Content of the message.
+--- Message class definition
+---
+local Message = {}
+Message.__index = Message
+
+--- @param data Message Initial data for Message.
+--- @return Message New instance of Message.
+function Message.new(data)
+  data = data or {}
+  setmetatable(data, Message)
+  return data
 end
 
-function Prompt.new()
-  local self = setmetatable({}, Prompt)
-  self.chunks = {}
-  return self
-end
-
----@param chunk Chunk
-function Prompt:push(chunk)
-  table.insert(self.chunks, chunk)
-end
-
-function Prompt:pop()
-  return table.remove(self.chunks)
-end
-
-function Prompt:peek()
-  return self.chunks[#self.chunks]
-end
-
-function Prompt:is_empty()
-  return #self.chunks == 0
-end
-
-function Prompt:clear()
-  self.chunks = {}
-end
-
-function Prompt:get_chunks()
-  return self.chunks
-end
-
-function Prompt:set_chunks(chunks)
-  self.chunks = chunks
-end
-
-function Prompt:join()
-  local result = {}
-
-  if #self.chunks == 0 then
-    return ""
-  end
-
-  ---@type {string: {cwd: string, file_type: string, chunks: Chunk[]}}
-  local grouped_chunks = {}
-
-  -- Group chunks by file_path
-  for _, chunk in ipairs(self.chunks) do
-    if not grouped_chunks[chunk.file_path] then
-      grouped_chunks[chunk.file_path] = {
-        cwd = chunk.cwd,
-        file_type = pf.detect_from_extension(chunk.file_path),
-        chunks = {},
-      }
-    end
-    table.insert(grouped_chunks[chunk.file_path].chunks, chunk)
-  end
-
-  table.insert(result, "<data>")
-
-  -- Process grouped chunks
-  ---@param file_path string
-  for file_path, chunk_group in pairs(grouped_chunks) do
-    table.insert(result, "  <document>")
-    table.insert(result, "    <metadata>")
-    table.insert(
-      result,
-      "      <working_directory>" .. chunk_group.cwd .. "</working_directory>"
+--- Reads a YAML file and converts its content to a Lua table.
+--- If the file cannot be opened or the content cannot be parsed, it notifies the user.
+--- @param file_path string: The path to the YAML file.
+--- @return table|nil: The parsed YAML content as a Lua table, or nil if an error occurs.
+function Prompt:from_yaml(file_path)
+  -- Attempt to open the file in read mode.
+  local file, err = io.open(file_path, "r")
+  if not file then
+    vim.notify(
+      string.format("Failed to open file: %s", err),
+      vim.log.levels.ERROR
     )
-    table.insert(result, "      <file_path>" .. file_path .. "</file_path>")
-    table.insert(
-      result,
-      "      <file_type>" .. chunk_group.file_type .. "</file_type>"
-    )
-    table.insert(result, "    </metadata>")
-    table.insert(result, "    <content>")
-
-    for _, block in ipairs(chunk_group.chunks) do
-      local tag_name = block.tag or "context"
-      table.insert(result, "      <" .. tag_name .. ">")
-      if block.instruction and block.instruction ~= "" then
-        table.insert(result, "        <instruction>")
-        table.insert(result, "          " .. block.instruction)
-        table.insert(result, "        </instruction>")
-      end
-
-      local tag_name = block.tag or "context"
-      if block.content and block.content ~= "" then
-        table.insert(result, "        <block>")
-
-        -- Find the minimum indentation of the content
-        local min_indent = get_min_indent(block.content)
-
-        -- Prepend each line of the content with " " and adjust indentation
-        local content_lines = {}
-        for line in block.content:gmatch("[^\n]+") do
-          local adjusted_line = line:sub(min_indent + 1)
-          table.insert(content_lines, "            " .. adjusted_line)
-        end
-
-        table.insert(result, table.concat(content_lines, "\n"))
-        table.insert(result, "        </block>")
-      end
-      table.insert(result, "      </" .. tag_name .. ">")
-    end
-    table.insert(result, "    </content>")
-
-    table.insert(result, "  </document>")
+    return nil
   end
 
-  table.insert(result, "</data>")
-  return table.concat(result, "\n")
+  -- Read the entire content of the file.
+  local content = file:read("*all")
+  file:close()
+
+  -- Attempt to parse the content as YAML.
+  --- @type boolean, any
+  local success, result = pcall(lyaml.load, content)
+  if not success then
+    vim.notify(
+      string.format("Failed to parse YAML: %s", result),
+      vim.log.levels.ERROR
+    )
+    return nil
+  end
+
+  -- If the parsed YAML does not have a 'name' field, derive it from the file path.
+  if not result.name then
+    ---@type string
+    result.name = file_path:match(".+/(.+)..+"):gsub("_", " ")
+  end
+
+  return result
 end
 
-function Prompt:length()
-  return #self.chunks
-end
-
-return Prompt
+return {
+  Prompt = Prompt,
+}

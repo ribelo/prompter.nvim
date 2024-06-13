@@ -1,15 +1,23 @@
 local M = {}
 
 local utils = require("prompter_nvim.utils")
-local yaml = require("prompter_nvim.yaml")
+local Prompt = require("prompter_nvim.prompt").Prompt
 local AnthropicChatRequest = require("prompter_nvim.anthropic.chat")
 local OpenAiChatCompletionRequest = require("prompter_nvim.openai.chat")
 local GroqChatCompletionRequest = require("prompter_nvim.groq.chat")
-local GeminiChatCompletionRequest = require("prompter_nvim.google.chat")
+local GeminiChatCompletionRequest =
+  require("prompter_nvim.google.generate_content")
+
+local GenerateContentRequest =
+  require("prompter_nvim.llm").GenerateContentRequest
+
 local anthropic_api = require("prompter_nvim.anthropic.api")
 local openai_api = require("prompter_nvim.openai.api")
 local groq_api = require("prompter_nvim.groq.api")
 local google_api = require("prompter_nvim.google.api")
+
+local Output = require("prompter_nvim.output").Output
+
 local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
 local previewers = require("telescope.previewers")
@@ -19,95 +27,100 @@ local actions_state = require("telescope.actions.state")
 
 local global_prompt_path = vim.fn.stdpath("data") .. "/prompts"
 
-M.output = ""
+---@type Output
+OUTPUT = Output:new()
 
+---@param path string The path to start searching from
+---@param root string The root directory to stop searching at
+---@return string|nil The path to the .prompts directory, or nil if not found
 local function find_recursive_prompts_path(path, root)
   if not path then
     return nil
   end
-  ---@type string
+
+  -- Construct the path to the .prompts directory
   local prompt_path = path .. "/.prompts"
+
+  -- Check if the .prompts directory exists
   if vim.fn.isdirectory(prompt_path) == 1 then
     return prompt_path
-  elseif path == root then
-    return nil
-  else
-    -- Extract the parent directory path
-    ---@type string
-    local parent_path = path:match("(.-)[\\/][^\\/]+$")
-    return find_recursive_prompts_path(parent_path, root)
   end
+
+  -- If we've reached the root directory, stop searching
+  if path == root then
+    return nil
+  end
+
+  -- Extract the parent directory path
+  local parent_path = path:match("(.-)[\\/][^\\/]+$")
+
+  -- Recursively search the parent directory
+  return find_recursive_prompts_path(parent_path, root)
 end
 
+---@param prompt_path string? The path to the prompts directory.
+---@return string[] A list of prompt files found.
 local function get_prompt_files(prompt_path)
+  -- If no path is given, return an empty list.
   if not prompt_path then
     return {}
   end
 
-  -- Use Lua's io.popen to execute the glob command and capture the output
-  local cmd = string.format("ls %s/*.yaml 2>/dev/null", prompt_path)
-  local pipe = io.popen(cmd)
+  -- Build the command to list YAML files in the prompts directory.
+  local command = string.format("ls %s/*.yaml 2>/dev/null", prompt_path)
+
+  -- Execute the command and capture the output.
+  local pipe = io.popen(command)
+
+  -- If the command fails, return an empty list.
   if not pipe then
     return {}
   end
 
+  -- Read the output line by line and store the file paths in a table.
   local files = {}
   for file in pipe:lines() do
     table.insert(files, file)
   end
-  pipe:close()
 
+  -- Close the pipe and return the list of files.
+  pipe:close()
   return files
 end
 
-local function read_yaml(file_path)
-  local file, err = io.open(file_path, "r")
-  if not file then
-    vim.notify(
-      string.format("Failed to open file: %s", err),
-      vim.log.levels.ERROR
-    )
-    return nil
-  end
-  local content = file:read("*all")
-  file:close()
-  local success, result = pcall(yaml.deserialize, content)
-  if not success then
-    vim.notify(
-      string.format("Failed to parse YAML: %s", result),
-      vim.log.levels.ERROR
-    )
-    return nil
-  end
-  if not result.name then
-    result.name = file_path:match(".+/(.+)%..+"):gsub("_", " ")
-  end
-  return result
-end
-
----@return {endpoint: string}[]
+---@return Prompt[] List of saved prompts.
 local function get_saved_prompts()
-  local cwd = vim.fn.getcwd()
-  local root = vim.fn.fnamemodify("/", ":p")
-  local local_prompt_path = find_recursive_prompts_path(cwd, root)
+  -- Get the current working directory and the root directory.
+  local current_working_directory = vim.fn.getcwd()
+  local root_directory = vim.fn.fnamemodify("/", ":p")
+
+  -- Find the local and global prompt paths.
+  local local_prompt_path =
+    find_recursive_prompts_path(current_working_directory, root_directory)
+
+  -- Get the local and global prompt files.
   local local_prompt_files = get_prompt_files(local_prompt_path)
   local global_prompt_files = get_prompt_files(global_prompt_path)
+
+  -- Combine the local and global prompt files.
   local all_prompt_files =
     vim.list_extend(local_prompt_files, global_prompt_files)
 
+  -- Read the prompts from the files.
   local prompts = {}
   for _, file_path in ipairs(all_prompt_files) do
-    local prompt = read_yaml(file_path)
+    local prompt = Prompt:from_yaml(file_path)
     if prompt then
       table.insert(prompts, prompt)
     end
   end
 
+  -- Return the prompts.
   return prompts
 end
 
----@param prompt {model: string|string[], vendor: string|string[]}
----@param on_choice fun(prompt: AnthropicChatRequest | OpenAiChatCompletionRequest | GroqChatCompletionRequest | GeminiChatCompletionRequest)
+---@param prompt Prompt
+---@param on_choice fun(prompt: GenerateContentRequest)
 local function choose_model_and_vendor(prompt, on_choice)
   local Menu = require("nui.menu")
 
@@ -161,7 +174,8 @@ local function choose_model_and_vendor(prompt, on_choice)
     elseif prompt.vendor == "groq" then
       on_choice(GroqChatCompletionRequest:new(prompt))
     elseif prompt.vendor == "google" then
-      on_choice(GeminiChatCompletionRequest:new(prompt))
+      local request = GeminiChatCompletionRequest:from_prompt(prompt):build()
+      on_choice(GenerateContentRequest:from_gemini(request))
     else
       vim.notify(
         "Invalid vendor. Please choose either 'anthropic', 'openai' or 'groq'",
@@ -310,11 +324,14 @@ M.show_browser = function(args)
       if json_object.messages[#json_object.messages].role == "assistant" then
         ---@type string
         prepend_output = json_object.messages[#json_object.messages].content
+        vim.print({ prepend_output1 = prepend_output })
       end
+
+      ---@param prompt GenerateContentRequest
       local send = function(prompt)
         prompt:send(function(err, output)
+          vim.notify("Got response from llm")
           ---@type string?
-          vim.print({ err = err, output = output })
           local text = err
             or (output.content and output.content[1] and output.content[1].text)
             or (output.choices and output.choices[1] and output.choices[1].message and output.choices[1].message.content)
@@ -332,12 +349,18 @@ M.show_browser = function(args)
             elseif prompt.extract_tags then
               text = utils.extract_text_between_tags(text, prompt.extract_tags)
             end
+            if prompt.unescape_xml then
+              text = utils.unescape_xml(text)
+            end
             if vim.api.nvim_buf_is_valid(preview_buffer) then
+              -- utils.buffer_add_content(text, { buffer = preview_buffer })
               utils.buffer_replace_content(
                 vim.trim(text),
                 { buffer = preview_buffer }
               )
             end
+            vim.print({ output2 = OUTPUT.add_content })
+            OUTPUT:add_content(os.date("%Y-%m-%d %H:%M:%S"), text)
           end
         end)
       end

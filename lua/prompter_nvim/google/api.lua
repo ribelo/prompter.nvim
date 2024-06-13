@@ -65,6 +65,7 @@ M.exec = function(cmd, args, on_result)
   end
 end
 M.call = function(model, body, on_result)
+  local config = config.get()
   local curl_args = {
     "-X",
     "POST",
