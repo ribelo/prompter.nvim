@@ -28,7 +28,7 @@ Blob.__index = Blob
 ---@param data string
 ---@return GeminiBlob
 function Blob:new(mime_type, data)
-  local obj = setmetatable({}, self)
+  local obj = setmetatable({}, { __index = self })
   obj.mime_type = mime_type
   obj.data = data
   return obj
@@ -44,7 +44,7 @@ FunctionCall.__index = FunctionCall
 ---@param args table<string, any> | nil
 ---@return GeminiFunctionCall
 function FunctionCall:new(name, args)
-  local obj = setmetatable({}, self)
+  local obj = setmetatable({}, { __index = self })
   obj.name = name
   obj.args = args
   return obj
@@ -52,7 +52,7 @@ end
 
 ---@class GeminiFunctionResponse
 ---@field name string
----@field response table<string, any>
+---@field response any
 local FunctionResponse = {}
 FunctionResponse.__index = FunctionResponse
 
@@ -60,7 +60,7 @@ FunctionResponse.__index = FunctionResponse
 ---@param response table<string, any>
 ---@return GeminiFunctionResponse
 function FunctionResponse:new(name, response)
-  local obj = setmetatable({}, self)
+  local obj = setmetatable({}, { __index = self })
   obj.name = name
   obj.response = response
   return obj
@@ -76,7 +76,7 @@ FileData.__index = FileData
 ---@param file_uri string
 ---@return GeminiFileData
 function FileData:new(mime_type, file_uri)
-  local obj = setmetatable({}, self)
+  local obj = setmetatable({}, { __index = self })
   obj.mime_type = mime_type
   obj.file_uri = file_uri
   return obj
@@ -84,33 +84,33 @@ end
 
 ---@class GeminiPart
 ---@field text string?
----@field inline_data GeminiBlob?
----@field function_call GeminiFunctionCall?
----@field function_response GeminiFunctionResponse?
----@field file_data GeminiFileData?
+---@field inlineData GeminiBlob?
+---@field functionCall GeminiFunctionCall?
+---@field functionResponse GeminiFunctionResponse?
+---@field fileData GeminiFileData?
 local Part = {}
 Part.__index = Part
 
 ---@param data string | GeminiBlob | GeminiFunctionCall | GeminiFunctionResponse | GeminiFileData
 ---@return GeminiPart
 function Part:new(data)
-  local obj = setmetatable({}, self)
+  local obj = setmetatable({}, { __index = self })
 
   -- Check the type of data and set the appropriate field.
   if type(data) == "string" then
     obj.text = data
   elseif type(data) == "table" and data.__index == Blob then
     ---@cast data GeminiBlob
-    obj.inline_data = data
+    obj.inlineData = data
   elseif type(data) == "table" and data.__index == FunctionCall then
     ---@cast data GeminiFunctionCall
-    obj.function_call = data
+    obj.functionCall = data
   elseif type(data) == "table" and data.__index == FunctionResponse then
     ---@cast data GeminiFunctionResponse
-    obj.function_response = data
+    obj.functionResponse = data
   elseif type(data) == "table" and data.__index == FileData then
     ---@cast data GeminiFileData
-    obj.file_data = data
+    obj.fileData = data
   end
 
   return obj
@@ -123,7 +123,7 @@ local Content = {}
 Content.__index = Content
 
 ---@param role GeminiRole?
----@param data string | GeminiPart | GeminiPart[] | GeminiContent?
+---@param data string | GeminiPart | GeminiPart[] | GeminiContent | table?
 ---@return GeminiContent
 function Content:new(data, role)
   if type(data) == "table" and data.__index == Content then
@@ -131,7 +131,7 @@ function Content:new(data, role)
     return data -- quick return if data is GeminiContent
   end
 
-  local obj = setmetatable({}, self)
+  local obj = setmetatable({ parts = {} }, { __index = self })
   obj.role = role or Role.User
 
   if type(data) == "string" then
@@ -142,6 +142,13 @@ function Content:new(data, role)
   elseif type(data) == "table" and #data > 0 and data[1].__index == Part then
     ---@cast data GeminiPart[]
     obj.parts = data
+  elseif type(data) == "table" and data.parts and #data.parts > 0 then
+    obj.parts = data.parts
+    obj.role = data.role or Role.Model
+  elseif not data then
+    return obj
+  else
+    error(string.format("Invalid data %s", vim.inspect(data)))
   end
 
   return obj
@@ -167,6 +174,10 @@ function Content:add(part)
   elseif type(part) == "table" and part.__index == Part then
     table.insert(self.parts, part)
   end
+end
+
+function Content:is_empty()
+  return #self.parts == 0
 end
 
 return {

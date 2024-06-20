@@ -2,33 +2,33 @@ local M = {}
 
 local utils = require("prompter_nvim.utils")
 local Prompt = require("prompter_nvim.prompt").Prompt
-
-local ClaudeMessagesRequest =
-  require("prompter_nvim.anthropic.messages").MessagesRequest
-local anthropic_models = require("prompter_nvim.anthropic.messages").models
-
+local AnthropicChatRequest = require("prompter_nvim.anthropic.chat")
 local OpenAiChatCompletionRequest = require("prompter_nvim.openai.chat")
 local GroqChatCompletionRequest = require("prompter_nvim.groq.chat")
-
 local GeminiChatCompletionRequest =
-  require("prompter_nvim.google.generate_content").GenerateContentRequest
-local gemini_models = require("prompter_nvim.google.generate_content").models
+  require("prompter_nvim.google.generate_content")
 
 local GenerateContentRequest =
   require("prompter_nvim.llm").GenerateContentRequest
 
+local anthropic_api = require("prompter_nvim.anthropic.api")
 local openai_api = require("prompter_nvim.openai.api")
 local groq_api = require("prompter_nvim.groq.api")
+local google_api = require("prompter_nvim.google.api")
 
-local OutputContent = require("prompter_nvim.output").Content
+local Output = require("prompter_nvim.output").Output
 
 local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
+local previewers = require("telescope.previewers")
 local conf = require("telescope.config").values
 local actions = require("telescope.actions")
 local actions_state = require("telescope.actions.state")
 
 local global_prompt_path = vim.fn.stdpath("data") .. "/prompts"
+
+---@type Output
+OUTPUT = Output:new()
 
 ---@param path string The path to start searching from
 ---@param root string The root directory to stop searching at
@@ -126,13 +126,13 @@ local function choose_model(prompt, on_choice)
   ---@return string[]
   local function get_models(vendor)
     if vendor == "anthropic" then
-      return anthropic_models
+      return anthropic_api.models
     elseif vendor == "openai" then
       return openai_api.models
     elseif vendor == "groq" then
       return groq_api.models
     elseif vendor == "google" then
-      return gemini_models
+      return google_api.models
     else
       vim.notify(
         "Invalid vendor. Please choose either 'anthropic', 'openai' or 'groq'",
@@ -170,10 +170,7 @@ local function choose_model(prompt, on_choice)
       end
       prompt.model = item.model
 
-      if item.vendor == "anthropic" then
-        local request = ClaudeMessagesRequest:from_prompt(prompt):build()
-        on_choice(GenerateContentRequest:from_claude(request))
-      elseif item.vendor == "google" then
+      if item.vendor == "google" then
         local request = GeminiChatCompletionRequest:from_prompt(prompt):build()
         on_choice(GenerateContentRequest:from_gemini(request))
       else
@@ -186,19 +183,25 @@ local function choose_model(prompt, on_choice)
   )
 end
 
----@param context string
-M.show_browser = function(context)
+---@param args {selected_text?: string, pre_prompt: string}
+M.show_browser = function(args)
+  local selected_text = args.selected_text
+  local pre_prompt = args.pre_prompt
+  local win_id = vim.api.nvim_get_current_win()
+  local buffer_id = vim.api.nvim_get_current_buf()
   local prompts = get_saved_prompts()
+  local prepend_output = ""
 
-  ---@param prompt Prompt
-  local entry_maker = function(prompt)
+  ---@param entry {value: {name: string}, name: string}
+  local entry_maker = function(entry)
     return {
-      value = prompt,
-      display = prompt.name,
-      ordinal = prompt.name,
+      value = entry,
+      display = entry.name,
+      ordinal = entry.name,
     }
   end
 
+  ---@diagnostic disable-next-line: no-unknown
   local finder = finders.new_table({
     results = prompts,
     entry_maker = entry_maker,
@@ -206,43 +209,67 @@ M.show_browser = function(context)
 
   local opts = require("telescope.themes").get_dropdown()
   opts.finder = finder
-  opts.attach_mappings = function(_buf, map)
-    ---@class TelescopeEntry
-    ---@field value Prompt
-    ---@field display string
-    ---@field ordinal string
-    local entry = actions_state.get_selected_entry()
-
-    map("i", "<c-o>", function()
-      local file_path = entry.value.file_path
-      vim.cmd("e " .. file_path)
-    end)
-
+  opts.attach_mappings = function(buf, map)
+    ---@diagnostic disable-next-line: no-unknown
+    local picker = actions_state.get_current_picker(buf)
+    ---@type number
+    local prompt_buffer = picker.prompt_bufnr
     actions.select_default:replace(function()
-      ---@type Prompt
-      local prompt = actions_state.get_selected_entry().value
-      prompt:fill(context)
+      utils.buffer_replace_content("loading...", { buffer = preview_buffer })
+      ---@type {value: {endpoint: string, model: string|string[], messages: {role: string, content: string|string[]}[], tags: string[]|nil}}
+      local entry = actions_state.get_selected_entry()
+      local json_object = entry.value
+      if json_object.messages[#json_object.messages].role == "assistant" then
+        ---@type string
+        prepend_output = json_object.messages[#json_object.messages].content
+        vim.print({ prepend_output1 = prepend_output })
+      end
 
       ---@param prompt GenerateContentRequest
-      ---@diagnostic disable-next-line: redefined-local
       local send = function(prompt)
-        prompt:send(function(_err, res)
+        prompt:send(function(err, output)
           vim.notify("Got response from llm")
-          local content = OutputContent:new(res:content())
-          if content then
-            vim.fn.setreg("a", content.content)
-            OUTPUT:add_content(content)
+          ---@type string?
+          local text = err
+            or (output.content and output.content[1] and output.content[1].text)
+            or (output.choices and output.choices[1] and output.choices[1].message and output.choices[1].message.content)
+            or (
+              output.candidates
+              and output.candidates[1]
+              and output.candidates[1].content
+              and output.candidates[1].content.parts
+              and output.candidates[1].content.parts[1]
+              and output.candidates[1].content.parts[1].text
+            )
+          if text then
+            if prompt.remove_tags then
+              text = utils.remove_tags(text, prompt.remove_tags)
+            elseif prompt.extract_tags then
+              text = utils.extract_text_between_tags(text, prompt.extract_tags)
+            end
+            if prompt.unescape_xml then
+              text = utils.unescape_xml(text)
+            end
+            if vim.api.nvim_buf_is_valid(preview_buffer) then
+              -- utils.buffer_add_content(text, { buffer = preview_buffer })
+              utils.buffer_replace_content(
+                vim.trim(text),
+                { buffer = preview_buffer }
+              )
+            end
+            vim.print({ output2 = OUTPUT.add_content })
+            OUTPUT:add_content(os.date("%Y-%m-%d %H:%M:%S"), text)
           end
         end)
       end
-      choose_model(prompt, send)
+      choose_model(entry.value, send)
     end)
     return true
   end
 
   pickers
     .new(opts, {
-      prompt_title = "cerebro",
+      prompt_title = "prompter",
       ---@diagnostic disable-next-line: no-unknown
       sorter = conf.generic_sorter(opts),
     })

@@ -1,6 +1,6 @@
 ---@diagnostic disable-next-line: no-unknown
 local openai = require("prompter_nvim.groq.api")
-local template = require("prompter_nvim.template")
+-- local template = require("prompter_nvim.template")
 
 ---@enum roles
 local ROLES = {
@@ -27,7 +27,7 @@ local GroqChatCompletionRequest = {}
 GroqChatCompletionRequest.__index = GroqChatCompletionRequest
 
 function GroqChatCompletionRequest:new(o)
-  return setmetatable(o, self)
+  return setmetatable(o, { __index = self })
 end
 
 ---@param on_result fun(err: string, response: any)

@@ -2,7 +2,9 @@
 local lyaml = require("lyaml")
 
 ---@class Prompt
----@field vendor string | string[] List of vendors.
+---@field file_path string Prompt file path.
+---@field name string Prompt name.
+---@field vendor string[] List of vendors.
 ---@field model string? Model.
 ---@field max_tokens integer? Maximum number of tokens.
 ---@field temperature number? Temperature setting.
@@ -10,16 +12,15 @@ local lyaml = require("lyaml")
 ---@field remove string[] List of string to remove.
 ---@field system string System message.
 ---@field messages Message[] List of messages.
+---@field tools string[]?
 --- Prompt class definition
 local Prompt = {}
 Prompt.__index = Prompt
 
 --- @param data Prompt Initial data for TranslatorConfig.
 --- @return Prompt New instance of TranslatorConfig.
-function Prompt.new(data)
-  data = data or {}
-  setmetatable(data, Prompt)
-  return data
+function Prompt:new(data)
+  return setmetatable(data or {}, { __index = self })
 end
 
 ---@class Message
@@ -32,16 +33,14 @@ Message.__index = Message
 
 --- @param data Message Initial data for Message.
 --- @return Message New instance of Message.
-function Message.new(data)
-  data = data or {}
-  setmetatable(data, Message)
-  return data
+function Message:new(data)
+  return setmetatable(data or {}, { __index = self })
 end
 
 --- Reads a YAML file and converts its content to a Lua table.
 --- If the file cannot be opened or the content cannot be parsed, it notifies the user.
 --- @param file_path string: The path to the YAML file.
---- @return table|nil: The parsed YAML content as a Lua table, or nil if an error occurs.
+--- @return Prompt?: The parsed YAML content as a Lua table, or nil if an error occurs.
 function Prompt:from_yaml(file_path)
   -- Attempt to open the file in read mode.
   local file, err = io.open(file_path, "r")
@@ -58,7 +57,7 @@ function Prompt:from_yaml(file_path)
   file:close()
 
   -- Attempt to parse the content as YAML.
-  --- @type boolean, any
+  --- @type boolean, Prompt?
   local success, result = pcall(lyaml.load, content)
   if not success then
     vim.notify(
@@ -68,13 +67,45 @@ function Prompt:from_yaml(file_path)
     return nil
   end
 
+  ---@cast result Prompt
+  local prompt = Prompt:new(result)
+
   -- If the parsed YAML does not have a 'name' field, derive it from the file path.
-  if not result.name then
+  if not prompt.name then
     ---@type string
-    result.name = file_path:match(".+/(.+)..+"):gsub("_", " ")
+    prompt.name = file_path:match("^.+/(.+)%..+$"):gsub("_", " ")
   end
 
+  prompt.file_path = file_path
+
   return result
+end
+
+---@class BasicBufferParams
+---@field buffnr integer Buffer number
+---@field winnr integer Window number
+---@field cwd string Current working directory
+---@field filename string Filename
+---@field filetype string File type
+---@field commentstring string Comment string
+local BasicBufferParams = {}
+BasicBufferParams.__index = BasicBufferParams
+
+---@param context string
+function Prompt:fill(context)
+  -- Loop through all message and replace content.
+  for _, message in ipairs(self.messages) do
+    message.content = message.content:gsub("{{context}}", context)
+    message.content =
+      message.content:gsub("{{context_description}}", CONTEXT_DESCRIPTION)
+  end
+
+  -- Replace context in system message.
+  if self.system then
+    self.system = self.system:gsub("{{context}}", context)
+    self.system =
+      self.system:gsub("{{context_description}}", CONTEXT_DESCRIPTION)
+  end
 end
 
 return {

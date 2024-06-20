@@ -1,6 +1,6 @@
 ---@diagnostic disable-next-line: no-unknown
 local openai = require("prompter_nvim.openai.api")
-local template = require("prompter_nvim.template")
+-- local template = require("prompter_nvim.template")
 
 ---@enum endpoints
 local ENDPOINTS = {
@@ -31,7 +31,7 @@ local OpenAiChatCompletionRequest = {}
 OpenAiChatCompletionRequest.__index = OpenAiChatCompletionRequest
 
 function OpenAiChatCompletionRequest:new(o)
-  return setmetatable(o, self)
+  return setmetatable(o, { __index = self })
 end
 
 ---@param on_result fun(err: string, response: OpenAiCompletionsResponse|OpenAiEditsResponse|OpenAiChatResponse)

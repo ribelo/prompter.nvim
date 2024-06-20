@@ -8,19 +8,17 @@ Gemini.__index = Gemini
 ---@param api_key string The API key for the Gemini API.
 ---@param api_version string The version of the Gemini API to use.
 ---@return Gemini A new Gemini instance.
-function Gemini.new(api_key, api_version)
-  local self = {
+function Gemini:new(api_key, api_version)
+  return setmetatable({
     api_key = api_key,
     api_version = api_version or "v1beta", -- Default to v1 if not provided
-  }
-  setmetatable(self, { __index = Gemini })
-  return self
+  }, { __index = self })
 end
 
 ---@return Gemini A new Gemini instance.
-function Gemini.default()
+function Gemini:default()
   ---@diagnostic disable-next-line: param-type-mismatch
-  return Gemini.new(os.getenv("GEMINI_API_KEY"), "v1beta")
+  return Gemini:new(os.getenv("GEMINI_API_KEY"), "v1beta")
 end
 
 ---@class GeminiResponseSchema
@@ -176,9 +174,8 @@ end
 
 --- Create a default SafetySettings instance.
 ---@return GeminiSafetySettings
-function GeminiSafetySettings.default()
-  local self = GeminiSafetySettings:new()
-  self
+function GeminiSafetySettings:default()
+  return GeminiSafetySettings:new()
     :add_category(
       GeminiHarmCategory.HARM_CATEGORY_HARASSMENT,
       GeminiHarmBlockThreshold.BLOCK_NONE
@@ -195,7 +192,6 @@ function GeminiSafetySettings.default()
       GeminiHarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
       GeminiHarmBlockThreshold.BLOCK_NONE
     )
-  return self
 end
 
 return {
@@ -208,37 +204,3 @@ return {
   SafetySetting = GeminiSafetySetting,
   SafetySettings = GeminiSafetySettings,
 }
-
-------@param on_result fun(err: string, response: GeminiResponse)
----function GeminiChatCompletionRequest:send(on_result)
----  local body = GeminiChatCompletionRequestBody::new(temperature, max_tokens)
----  if self.system then
----    body.systemInstruction =
----      { role = "user", parts = { { text = self.system } } }
----  end
----  -- Add the messages
----  for _, message in ipairs(self.messages) do
----    if message.role == "assistant" then
----      message.role = "model"
----    end
----    local content =
----      { role = message.role, parts = { { text = message.content } } }
----    table.insert(body.contents, content)
----  end
----
----  gemini.call(self.model, body, on_result)
----end
----
-------@param params table?
----function GeminiChatCompletionRequest:fill(params)
----  if self.messages == nil then
----    return
----  end
----  for _, message in ipairs(self.messages) do
----    for _, part in ipairs(message.parts) do
----      part.text = template.fill_template(part.text, params)
----    end
----  end
----end
----
----return GeminiChatCompletionRequest

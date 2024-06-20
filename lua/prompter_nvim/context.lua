@@ -1,5 +1,3 @@
-local utils = require("prompter_nvim.utils")
-
 --- Represents the visually selected text.
 ---
 --- @class Selection
@@ -13,17 +11,17 @@ Selection.__index = Selection
 --- @param content string The selected text.
 --- @param range table The range of the selection.
 --- @return Selection A new Selection instance.
-function Selection.new(content, range)
-  local self = setmetatable({}, Selection)
-  self.content = content
-  self.range = range
-  return self
+function Selection:new(content, range)
+  return setmetatable({
+    content = content,
+    range = range,
+  }, { __index = self })
 end
 
 --- Returns the visually selected text as a Selection instance.
 ---
 --- @return Selection|nil The selected text as a Selection instance, or nil if no text is selected.
-function Selection.get_selected_text()
+function Selection:get_selected_text()
   local _, srow, scol = unpack(vim.fn.getpos("v"))
   local _, erow, ecol = unpack(vim.fn.getpos("."))
 
@@ -34,7 +32,7 @@ function Selection.get_selected_text()
       srow, erow = erow, srow
     end
     -- Get lines from the buffer using the API
-    return Selection.new(
+    return Selection:new(
       table.concat(vim.api.nvim_buf_get_lines(0, srow - 1, erow, true), "\n"),
       { start_line = srow, start_col = scol, end_line = erow, end_col = ecol }
     )
@@ -45,7 +43,7 @@ function Selection.get_selected_text()
     -- Determine if selection is forward or backward
     if srow < erow or (srow == erow and scol <= ecol) then
       -- Get text from the buffer using the API for forward selection
-      return Selection.new(
+      return Selection:new(
         table.concat(
           vim.api.nvim_buf_get_text(0, srow - 1, scol - 1, erow - 1, ecol, {}),
           "\n"
@@ -54,7 +52,7 @@ function Selection.get_selected_text()
       )
     else
       -- Get text from the buffer using the API for backward selection
-      return Selection.new(
+      return Selection:new(
         table.concat(
           vim.api.nvim_buf_get_text(0, erow - 1, ecol - 1, srow - 1, scol, {}),
           "\n"
@@ -82,7 +80,7 @@ function Selection.get_selected_text()
         vim.api.nvim_buf_get_lines(0, i - 1, i, true)[1]:sub(scol, ecol)
       )
     end
-    return Selection.new(
+    return Selection:new(
       table.concat(lines, "\n"),
       { start_line = srow, start_col = scol, end_line = erow, end_col = ecol }
     )
@@ -109,17 +107,14 @@ CodeBlock.__index = CodeBlock
 --- @param data CodeBlock Data to initialize the CodeBlock with.
 --- @return CodeBlock New CodeBlock instance with the provided data.
 function CodeBlock:new(data)
-  data = data or {}
-  setmetatable(data, self)
-  self.__index = self
-  return data
+  return setmetatable(data or {}, { __index = self })
 end
 
 --- Creates a new CodeBlock instance from the current selection.
 ---
 --- @return CodeBlock? New CodeBlock instance containing the selection.
-function CodeBlock.from_selection()
-  local selection = Selection.get_selected_text()
+function CodeBlock:from_selection()
+  local selection = Selection:get_selected_text()
   if selection then
     local code_block = CodeBlock:new({
       tag = nil,
@@ -172,15 +167,15 @@ SourceFile.__index = SourceFile
 --- Creates a new SourceFile instance with default values.
 ---
 --- @return SourceFile New SourceFile instance with default values.
-function SourceFile.default()
+function SourceFile:default()
   local current_buffer = vim.api.nvim_get_current_buf()
-  local self = setmetatable({}, SourceFile)
-  self.path = vim.api.nvim_buf_get_name(current_buffer)
-  self.cwd = vim.fn.getcwd()
-  self.filetype = vim.bo[current_buffer].filetype
-  self.code_blocks = {}
-  self.diagnostics = {}
-  return self
+  local obj = setmetatable({}, { __index = self })
+  obj.path = vim.api.nvim_buf_get_name(current_buffer)
+  obj.cwd = vim.fn.getcwd()
+  obj.filetype = vim.bo[current_buffer].filetype
+  obj.code_blocks = {}
+  obj.diagnostics = {}
+  return obj
 end
 
 --- Adds a code block to the source file.
@@ -205,9 +200,9 @@ end
 ---
 --- @return SourceFile? New SourceFile instance containing the selection.
 function SourceFile.from_selection()
-  local code_block = CodeBlock.from_selection()
+  local code_block = CodeBlock:from_selection()
   if code_block then
-    local self = SourceFile.default()
+    local self = SourceFile:default()
     self:add_code_block(code_block)
     return self
   end
@@ -253,19 +248,19 @@ local severity_mapping = {
 function Diagnostic.from_nvim_diagnostic(diagnostic_data)
   diagnostic_data.severity = severity_mapping[diagnostic_data.severity]
     or "Information"
-  return Diagnostic.new(diagnostic_data)
+  return Diagnostic:new(diagnostic_data)
 end
 
 --- Creates a new Diagnostic instance.
 ---
 --- @param diagnostic_data table Data to populate the Diagnostic instance.
 --- @return Diagnostic New Diagnostic instance.
-function Diagnostic.new(diagnostic_data)
-  local self = setmetatable({}, Diagnostic)
+function Diagnostic:new(diagnostic_data)
+  local obj = setmetatable({}, { __index = self })
   for k, v in pairs(diagnostic_data) do
-    self[k] = v
+    obj[k] = v
   end
-  return self
+  return obj
 end
 
 --- Represents a prompt containing code from one or more files, along with instructions for the LLM.
@@ -285,19 +280,18 @@ Context.__index = Context
 --- @return Context New Prompt instance with the provided data.
 function Context:new(data)
   data = data or {}
-  setmetatable(data, self)
-  self.__index = self
-  data.id = data.id or os.time()
-  data.files = data.files or {}
-  data.description = data.description
-  data.instruction = data.instruction
-  return data
+  local obj = setmetatable(data, { __index = self })
+  obj.id = data.id or os.time()
+  obj.files = data.files or {}
+  obj.description = data.description
+  obj.instruction = data.instruction
+  return obj
 end
 
 -- Creates a new Prompt instance pre-populated with empty project data.
 ---
 --- @return Context New prompt instance with default values.
-function Context.default()
+function Context:default()
   local data = {
     description = nil,
     instruction = nil,
@@ -341,7 +335,7 @@ end
 --- @return Context? Prompt instance with the added selection.
 function Context:add_selection(tag, description, instruction)
   -- Get the selected text as a CodeBlock
-  local code_block = CodeBlock.from_selection()
+  local code_block = CodeBlock:from_selection()
   -- If no selection is found, return without doing anything
   if not code_block then
     return
@@ -370,7 +364,7 @@ function Context:add_selection(tag, description, instruction)
   end
   -- If the current file is not found, create a new SourceFile from the selection
   if not current_file then
-    current_file = SourceFile.default()
+    current_file = SourceFile:default()
     -- Add the new SourceFile to the list of source files
     table.insert(self.files, current_file)
     -- Cast the current_file to SourceFile for type safety
@@ -395,7 +389,7 @@ function Context:add_diagnostic(diagnostic)
     end
   end
   if not current_file then
-    current_file = SourceFile.default()
+    current_file = SourceFile:default()
     table.insert(self.files, current_file)
     ---@cast current_file SourceFile
   end
@@ -585,5 +579,36 @@ function Context:to_xml()
   xml = xml .. "</context>\n"
   return xml
 end
+
+CONTEXT_DESCRIPTION = [[
+You are an AI language model designed to assist with code generation. You will receive requests containing an XML structure that provides context, code blocks, instructions, and diagnostics. Your task is to analyze the provided XML data and generate appropriate responses based on the given information.
+
+The XML structure consists of the following elements:
+- `<context>`: The root element representing the entire context passed to you. All relevant information for generating a response is contained within this tag.
+  - `<instruction>`: An optional tag containing a general instruction or prompt for you to consider when processing the context and generating a response.
+
+- `<file>`: Represents a single file in the context. The 'path' attribute specifies the path to the file.
+  - `<filetype>`: An optional tag indicating the type of the file, which can help you interpret the file's content (e.g., source code, text, etc.).
+
+- `<code_block>`: Represents a block of code within a file. Treat the content within this tag as source code.
+  - `<description>`: An optional tag providing a description of the code block, giving you additional information about its purpose or functionality.
+  - `<instruction>`: An optional tag containing a specific instruction or prompt related to the code block. Consider this instruction when processing the code block.
+  - `<content>`: Contains the actual content of the code block. Treat this content as source code and take it into account when generating a response.
+    - Optional surrounding tag (e.g., `<code>`, `<pre>`, etc.): May be used to wrap the code block content for proper formatting or syntax highlighting.
+  - `<start_line>`, `<start_col>`, `<end_line>`, `<end_col>`: Specify the location of the code block within the source file, indicating the line and column numbers where the block starts and ends. Use this information to understand the context and relationships between code blocks.
+
+- `<diagnostic>`: Represents a single diagnostic or issue related to the source file. Consider these diagnostics when analyzing the code and generating a response.
+  - `<message>`: Contains a message describing the diagnostic or issue.
+  - `<code>`: An optional tag containing a code or identifier associated with the diagnostic.
+  - `<source>`: An optional tag specifying the source or tool that generated the diagnostic.
+  - `<severity>`: Indicates the severity of the diagnostic, helping you prioritize issues.
+  - `<start_line>`, `<start_col>`, `<end_line>`, `<end_col>`: Similar to code blocks, these tags specify the location of the diagnostic within the source file.
+
+Your goal is to analyze the provided XML structure, understand the context, source code, instructions, and diagnostics, and generate an appropriate response based on the given information. Consider the general instructions, specific code block instructions, code content, and reported diagnostics when formulating your response.
+
+When generating a response, return only the modified code, not the entire context you receive. If a specific code block is marked with an instruction, focus on that block and return the modified code for that block. However, if the entire context is marked with an instruction, then you should process and return the modified code for the whole context.
+
+Treat the information in the XML structure as guidance and context, but also rely on your own knowledge and understanding to provide a helpful and accurate response. If there is ambiguity or lack of information, use your best judgment provide useful response.
+]]
 
 return Context

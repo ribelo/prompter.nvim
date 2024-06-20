@@ -1,24 +1,33 @@
 local config = require("prompter_nvim.config")
+-- local browser = require("prompter_nvim.browser_back")
 local browser = require("prompter_nvim.browser")
 local utils = require("prompter_nvim.utils")
 local Context = require("prompter_nvim.context")
+local Output = require("prompter_nvim.output").Output
+require("prompter_nvim.tools")
 
 -- local command = require("prompter_nvim.command")
 
 ---@type Context
 CONTEXT = Context:default()
+
+---@type Output
+OUTPUT = Output:default()
+
 local M = {}
 
---- Show the  browser window.
+--- Show the browser window.
 M.browser = function()
   -- Get the currently selected text in the Neovim buffer.
   local selected_text = utils.join_lines(utils.get_selected_text())
 
-  -- Show the browser with the selected text and pre-filled prompt.
-  browser.show_browser({
-    selected_text = selected_text,
-    pre_prompt = CONTEXT:to_xml(),
-  })
+  -- Show the browser with the selected text and pre-filled prompt,
+  -- or with the XML context if no text is selected.
+  if selected_text and selected_text ~= "" then
+    browser.show_browser(selected_text)
+  else
+    browser.show_browser(CONTEXT:to_xml())
+  end
 end
 
 -- M.prompter_continue = command.prompter_continue

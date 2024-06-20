@@ -1,6 +1,6 @@
 ---@diagnostic disable-next-line: no-unknown
 local anthropic = require("prompter_nvim.anthropic.api")
-local template = require("prompter_nvim.template")
+-- local template = require("prompter_nvim.template")
 
 ---@enum endpoints
 local ENDPOINTS = {
@@ -31,7 +31,7 @@ local AnthropicChatRequest = {}
 AnthropicChatRequest.__index = AnthropicChatRequest
 
 function AnthropicChatRequest:new(o)
-  return setmetatable(o, self)
+  return setmetatable(o, { __index = self })
 end
 
 ---@class AnthropicCompletionsResponse
