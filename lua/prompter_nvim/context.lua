@@ -1,3 +1,5 @@
+local M = {}
+
 --- Represents the visually selected text.
 ---
 --- @class Selection
@@ -5,6 +7,7 @@
 --- @field range table A table containing the start and end positions of the selection.
 local Selection = {}
 Selection.__index = Selection
+M.Selection = Selection
 
 --- Creates a new Selection instance.
 ---
@@ -101,6 +104,7 @@ end
 -- Define the CodeBlock class
 local CodeBlock = {}
 CodeBlock.__index = CodeBlock
+M.CodeBlock = CodeBlock
 
 --- Creates a new CodeBlock instance from the provided data.
 ---
@@ -163,6 +167,7 @@ end
 -- Define the SourceFile class
 local SourceFile = {}
 SourceFile.__index = SourceFile
+M.SourceFile = SourceFile
 
 --- Creates a new SourceFile instance with default values.
 ---
@@ -225,6 +230,7 @@ end
 --- @field user_data table? Additional user data associated with the diagnostic.
 local Diagnostic = {}
 Diagnostic.__index = Diagnostic
+M.Diagnostic = Diagnostic
 
 ---@enum DiagnosticSeverity
 Diagnostic.DiagnosticSeverity = {
@@ -273,6 +279,7 @@ end
 -- Define the Prompt class
 local Context = {}
 Context.__index = Context
+M.Context = Context
 
 --- Creates a new Prompt instance from the provided data.
 ---
@@ -580,35 +587,111 @@ function Context:to_xml()
   return xml
 end
 
-CONTEXT_DESCRIPTION = [[
-You are an AI language model designed to assist with code generation. You will receive requests containing an XML structure that provides context, code blocks, instructions, and diagnostics. Your task is to analyze the provided XML data and generate appropriate responses based on the given information.
+M.xml_description = {
+  intro = [[
+# XML Structure for Code Analysis
 
-The XML structure consists of the following elements:
-- `<context>`: The root element representing the entire context passed to you. All relevant information for generating a response is contained within this tag.
-  - `<instruction>`: An optional tag containing a general instruction or prompt for you to consider when processing the context and generating a response.
+You will receive requests in an XML format that encapsulates context, code blocks, instructions, and diagnostics for various code-related tasks. Your primary responsibility is to parse this XML structure, comprehend its contents, and generate appropriate responses tailored to the specific requirements outlined within.
 
-- `<file>`: Represents a single file in the context. The 'path' attribute specifies the path to the file.
-  - `<filetype>`: An optional tag indicating the type of the file, which can help you interpret the file's content (e.g., source code, text, etc.).
+This document describes in detail the XML structure used for these code analysis and modification tasks.
+]],
+  core = [[
+## Core Elements
 
-- `<code_block>`: Represents a block of code within a file. Treat the content within this tag as source code.
-  - `<description>`: An optional tag providing a description of the code block, giving you additional information about its purpose or functionality.
-  - `<instruction>`: An optional tag containing a specific instruction or prompt related to the code block. Consider this instruction when processing the code block.
-  - `<content>`: Contains the actual content of the code block. Treat this content as source code and take it into account when generating a response.
-    - Optional surrounding tag (e.g., `<code>`, `<pre>`, etc.): May be used to wrap the code block content for proper formatting or syntax highlighting.
-  - `<start_line>`, `<start_col>`, `<end_line>`, `<end_col>`: Specify the location of the code block within the source file, indicating the line and column numbers where the block starts and ends. Use this information to understand the context and relationships between code blocks.
+### `<context>`
 
-- `<diagnostic>`: Represents a single diagnostic or issue related to the source file. Consider these diagnostics when analyzing the code and generating a response.
-  - `<message>`: Contains a message describing the diagnostic or issue.
-  - `<code>`: An optional tag containing a code or identifier associated with the diagnostic.
-  - `<source>`: An optional tag specifying the source or tool that generated the diagnostic.
-  - `<severity>`: Indicates the severity of the diagnostic, helping you prioritize issues.
-  - `<start_line>`, `<start_col>`, `<end_line>`, `<end_col>`: Similar to code blocks, these tags specify the location of the diagnostic within the source file.
+The root element that encompasses all relevant information from user perspective about the code at hand.
 
-Your goal is to analyze the provided XML structure, understand the context, source code, instructions, and diagnostics, and generate an appropriate response based on the given information. Consider the general instructions, specific code block instructions, code content, and reported diagnostics when formulating your response.
+- `<instruction>`: An optional tag containing a general instruction or prompt. This guides your overall approach to the task, providing high-level direction for how to process and respond to the entire context.
 
-When generating a response, return only the modified code, not the entire context you receive. If a specific code block is marked with an instruction, focus on that block and return the modified code for that block. However, if the entire context is marked with an instruction, then you should process and return the modified code for the whole context.
+### `<file>`
 
-Treat the information in the XML structure as guidance and context, but also rely on your own knowledge and understanding to provide a helpful and accurate response. If there is ambiguity or lack of information, use your best judgment provide useful response.
-]]
+Represents a single file within the context. This element allows for organization of code blocks and diagnostics within specific files.
+- Attribute `path`: Specifies the file path, helping to understand the file's location within a project structure.
+- `<filetype>`: Specifies the file type, primarily indicating the programming language used.
 
-return Context
+### `<code_block>`
+
+Represents a distinct block of code within a file. This is a crucial element as it contains the actual code you'll be working with, analyzing, or modifying.
+
+- Location tags: `<start_line>`, `<start_col>`, `<end_line>`, `<end_col>`: These specify the exact location of the code block within the file, helping to understand its context and relationships with other code blocks.
+- `<content>`: Contains the actual code content. This is the primary focus of your analysis or modification efforts.
+]],
+  instruction = [[
+- `<instruction>`: Specific instructions or prompts related to this particular code block. This guides your actions for this specific piece of code.
+]],
+  description = [[
+- `<description>`: Providing additional context, comment or explanation about the code block's purpose, functionality, or any other relevant details.
+]],
+  test = [[
+- `<test>`: Indicates that the code requires test creation. Your task may involve writing appropriate test cases to ensure the code's correctness and functionality.
+]],
+  document = [[
+- `<document>`: Indicates that the code needs documentation. This could involve adding comments, writing docstrings, creating function/method descriptions, or even generating separate documentation files.
+]],
+  hole = [[
+- `<hole>`: Represents a placeholder or gap in the code that needs to be filled. Your task is to provide appropriate code to complete the functionality.
+]],
+  algo = [[
+- `<algo>`: Indicates that the algorithm used in the code needs improvement or optimization. You should analyze the current algorithm and suggest or implement a better one.
+]],
+  implement = [[
+- `<implement>`: Indicates that a new feature or functionality needs to be implemented. You're expected to write code to fulfill the specified requirements.
+]],
+  analyse = [[
+- `<analyse>`: Request a comprehensive code review, including structural analysis, issue identification, and improvement suggestions.
+]],
+  optimize = [[
+- `<optimize>`: Suggests that the code should be optimized for better performance or efficiency. Your task is to improve the code while maintaining its functionality.
+]],
+  refactor = [[
+- `<refactor>`: Indicates that the code needs to be restructured or reorganized. The goal is to improve its internal structure without changing its external behavior.
+]],
+  fix = [[
+- `<fix>`: Suggests there's a bug in the code that needs to be identified and fixed. You should find the issue and provide a solution.
+]],
+  grug = [[
+- `<grug>`: Suggests that the code should be simplified to "Grug-brained Developer" style, emphasizing straightforward solutions and minimal complexity.
+]],
+  diagnostic = [[
+### `<diagnostic>`
+Represents a specific issue, warning, or informational message related to the source file. These diagnostics provide valuable insights into potential problems or areas that need attention.
+- `<message>`: Contains a description of the diagnostic or issue. This message typically explains what the problem is or what needs attention.
+- `<code>`: An optional tag containing a code or identifier associated with the diagnostic. This can help in categorizing or referencing specific types of issues.
+- `<source>`: An optional tag specifying the tool or system that generated the diagnostic. This information can be useful in understanding the context and reliability of the diagnostic.
+- `<severity>`: Indicates how critical or important the issue is. This helps in prioritizing which problems to address first.
+- Location tags: `<start_line>`, `<start_col>`, `<end_line>`, `<end_col>`: Similar to code blocks, these specify the exact location of the issue within the source file, helping to pinpoint where attention is needed.
+]],
+  outro = [[
+This XML structure provides a comprehensive framework for specifying various code-related tasks, from simple analyses to complex refactoring operations. Each tag is designed to convey specific information or instructions relevant to the code analysis process. Your task is to interpret this structure and respond accordingly, focusing on the particular requirements specified in each request.
+]],
+}
+
+--- Build XML description based on tags found in the XML string
+--- @param xml_string string
+--- @return string
+function M.build_xml_description(xml_string)
+  local description = { M.xml_description.intro, M.xml_description.core }
+  --- @type table<string, boolean>
+  local added_tags = {}
+
+  for tag, content in pairs(M.xml_description) do
+    if
+      tag ~= "intro"
+      and tag ~= "core"
+      and tag ~= "outro"
+      and not added_tags[tag]
+    then
+      if xml_string:match("<" .. tag .. "[^>]*>") then
+        table.insert(description, content)
+        added_tags[tag] = true
+      end
+    end
+  end
+
+  table.insert(description, M.xml_description.outro)
+
+  return table.concat(description, "\n\n")
+end
+
+return M
