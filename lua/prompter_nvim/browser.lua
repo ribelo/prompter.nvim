@@ -1,14 +1,10 @@
 local M = {}
 
-local utils = require("prompter_nvim.utils")
 local Prompt = require("prompter_nvim.prompt").Prompt
 
 local ClaudeMessagesRequest =
   require("prompter_nvim.anthropic.messages").MessagesRequest
 local anthropic_models = require("prompter_nvim.anthropic.messages").models
-
-local OpenAiChatCompletionRequest = require("prompter_nvim.openai.chat")
-local GroqChatCompletionRequest = require("prompter_nvim.groq.chat")
 
 local GeminiChatCompletionRequest =
   require("prompter_nvim.google.generate_content").GenerateContentRequest
@@ -186,8 +182,9 @@ local function choose_model(prompt, on_choice)
   )
 end
 
----@param context string
-M.show_browser = function(context)
+--- @param context string
+--- @param output Output
+M.show_browser = function(context, output)
   local prompts = get_saved_prompts()
 
   ---@param prompt Prompt
@@ -238,7 +235,7 @@ M.show_browser = function(context)
 
           local content = Content:new(content_string, prompt.remove_tags)
           if content then
-            OUTPUT:add_content(content)
+            output:add_content(content)
             vim.fn.setreg("a", content:cleanup())
           end
         end)

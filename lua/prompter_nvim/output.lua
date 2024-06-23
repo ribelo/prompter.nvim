@@ -136,7 +136,8 @@ end
 function Output:add_content(content, tags_to_remove)
   table.insert(
     self.contents,
-    type(content) == "string" and Content:new(content) or content
+    type(content) == "string" and Content:new(content, tags_to_remove)
+      or content
   )
   M.refresh_output_buffer()
 end
@@ -187,7 +188,7 @@ M.open_output_window = function()
   end
 
   vim.api.nvim_win_set_buf(output_win, output_buf)
-  local output_lines = vim.split(OUTPUT:render(), "\n")
+  local output_lines = vim.split(output:render(), "\n")
   vim.api.nvim_buf_set_lines(output_buf, 0, -1, false, output_lines)
 
   -- Set the window options
@@ -226,13 +227,9 @@ end
 
 M.refresh_output_buffer = function()
   if output_buf then
-    local output_lines = vim.split(OUTPUT:render(), "\n")
+    local output_lines = vim.split(output:render(), "\n")
     vim.api.nvim_buf_set_lines(output_buf, 0, -1, false, output_lines)
   end
-end
-
-M.clear_output_buffer = function()
-  OUTPUT:clear()
 end
 
 return M

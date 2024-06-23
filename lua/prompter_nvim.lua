@@ -4,15 +4,12 @@ local browser = require("prompter_nvim.browser")
 local utils = require("prompter_nvim.utils")
 local Context = require("prompter_nvim.context").Context
 local Output = require("prompter_nvim.output").Output
-require("prompter_nvim.tools")
-
--- local command = require("prompter_nvim.command")
 
 ---@type Context
-CONTEXT = Context:default()
+local context = Context:default()
 
 ---@type Output
-OUTPUT = Output:default()
+local output = Output:default()
 
 local M = {}
 
@@ -26,13 +23,9 @@ M.browser = function()
   if selected_text and selected_text ~= "" then
     browser.show_browser(selected_text)
   else
-    browser.show_browser(CONTEXT:to_xml())
+    browser.show_browser(context:to_xml())
   end
 end
-
--- M.prompter_continue = command.prompter_continue
--- M.prompter_replace = command.prompter_replace
--- M.prompter_edit = command.prompter_edit
 
 local function mkdir(path)
   vim.fn.mkdir(path)
@@ -77,7 +70,7 @@ M.add_selection_with_meta = function()
   local description = vim.fn.input("Enter description: ")
 
   -- Add the selection to the prompter.
-  CONTEXT:add_selection(tag, description, instruction)
+  context:add_selection(tag, description, instruction)
 
   -- Notify the user that the selection has been added.
   vim.notify(
@@ -110,7 +103,7 @@ M.add_diagnostic = function()
   -- If there are any diagnostics, add them to the prompter.
   if #diagnostics > 0 then
     for _, diagnostic in ipairs(diagnostics) do
-      CONTEXT:add_diagnostic(diagnostic)
+      context:add_diagnostic(diagnostic)
     end
 
     -- Notify the user that diagnostics have been added.
@@ -124,7 +117,7 @@ end
 --- Adds a new selection to the prompter, without any metadata or user input.
 M.fast_add_selection = function()
   -- Add an empty selection to the prompter.
-  CONTEXT:add_selection(nil, nil, nil)
+  context:add_selection(nil, nil, nil)
 
   -- Tell the user we added a selection.
   vim.notify(
@@ -150,13 +143,13 @@ M.set_description = function()
 
   -- If the user cancels the input, set description to nil.
   if description == "" then
-    CONTEXT:set_description(nil)
+    context:set_description(nil)
     vim.notify("Description not set", vim.log.levels.WARN)
     return
   end
 
   -- Set the description on the prompter.
-  CONTEXT:set_description(description)
+  context:set_description(description)
 
   -- Notify the user that the description has been set.
   vim.notify("Description set successfully", vim.log.levels.INFO)
@@ -179,13 +172,13 @@ M.set_instruction = function()
 
   -- If the user cancels the input, set instruction to nil.
   if instruction == "" then
-    CONTEXT:set_instruction(nil)
+    context:set_instruction(nil)
     vim.notify("Instruction not set", vim.log.levels.WARN)
     return
   end
 
   -- Set the instruction on the prompter.
-  CONTEXT:set_instruction(instruction)
+  context:set_instruction(instruction)
 
   -- Notify the user that the instruction has been set.
   vim.notify("Instruction set successfully", vim.log.levels.INFO)
@@ -203,7 +196,7 @@ end
 --- This function clears the prompt displayed by the prompter and
 --- notifies the user with a success message.
 M.clear_prompt = function()
-  CONTEXT:clear()
+  context:clear()
   vim.notify("Prompt cleared")
 end
 
@@ -219,7 +212,7 @@ M.open_prompt_as_markdown = function()
   vim.api.nvim_win_set_buf(prompt_win, prompt_buf)
 
   -- Set the contents of the prompt buffer to the prompt_chunks
-  local prompt_lines = vim.split(CONTEXT:to_markdown(), "\n")
+  local prompt_lines = vim.split(context:to_markdown(), "\n")
   vim.api.nvim_buf_set_lines(prompt_buf, 0, -1, false, prompt_lines)
   -- Set the buffer options
   vim.api.nvim_set_option_value("buftype", "nofile", { buf = prompt_buf })
@@ -250,7 +243,7 @@ M.open_prompt_as_json = function()
   vim.api.nvim_win_set_buf(prompt_win, prompt_buf)
 
   -- Set the contents of the prompt buffer to the prompt_chunks
-  local prompt_lines = vim.split(CONTEXT:to_json(), "\n")
+  local prompt_lines = vim.split(context:to_json(), "\n")
   vim.api.nvim_buf_set_lines(prompt_buf, 0, -1, false, prompt_lines)
   -- Set the buffer options
   vim.api.nvim_set_option_value("buftype", "nofile", { buf = prompt_buf })
@@ -281,7 +274,7 @@ M.open_prompt_as_xml = function()
   vim.api.nvim_win_set_buf(prompt_win, prompt_buf)
 
   -- Set the contents of the prompt buffer to the prompt_chunks
-  local prompt_lines = vim.split(CONTEXT:to_xml(), "\n")
+  local prompt_lines = vim.split(context:to_xml(), "\n")
   vim.api.nvim_buf_set_lines(prompt_buf, 0, -1, false, prompt_lines)
   -- Set the buffer options
   vim.api.nvim_set_option_value("buftype", "nofile", { buf = prompt_buf })
@@ -385,6 +378,9 @@ M.toggle_xml_buffer = function()
 end
 
 M.toggle_output_window = require("prompter_nvim.output").toggle_output_window
-M.clear_output_buffer = require("prompter_nvim.output").clear_output_buffer
+
+M.clear_output_buffer = function()
+  output:clear()
+end
 
 return M
