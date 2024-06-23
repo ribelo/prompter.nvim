@@ -16,7 +16,7 @@ local GenerateContentRequest =
 local openai_api = require("prompter_nvim.openai.api")
 local groq_api = require("prompter_nvim.groq.api")
 
-local Content = require("prompter_nvim.output").Content
+local output = require("prompter_nvim.output")
 
 local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
@@ -183,8 +183,7 @@ local function choose_model(prompt, on_choice)
 end
 
 --- @param context string
---- @param output Output
-M.show_browser = function(context, output)
+M.show_browser = function(context)
   local prompts = get_saved_prompts()
 
   ---@param prompt Prompt
@@ -233,10 +232,13 @@ M.show_browser = function(context, output)
               .. content_string
           end
 
-          local content = Content:new(content_string, prompt.remove_tags)
+          local content = output.Content:new(content_string, prompt.remove_tags)
           if content then
-            output:add_content(content)
-            vim.fn.setreg("a", content:cleanup())
+            output.with_global_output(function(o)
+              o:add_content(content)
+              vim.fn.setreg("a", content:cleanup())
+              return nil
+            end)
           end
         end)
       end

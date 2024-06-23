@@ -3,13 +3,11 @@ local config = require("prompter_nvim.config")
 local browser = require("prompter_nvim.browser")
 local utils = require("prompter_nvim.utils")
 local Context = require("prompter_nvim.context").Context
-local Output = require("prompter_nvim.output").Output
+local output = require("prompter_nvim.output")
+local nio = require("nio")
 
 ---@type Context
 local context = Context:default()
-
----@type Output
-local output = Output:default()
 
 local M = {}
 
@@ -380,7 +378,10 @@ end
 M.toggle_output_window = require("prompter_nvim.output").toggle_output_window
 
 M.clear_output_buffer = function()
-  output:clear()
+  output.with_global_output(function(o)
+    o:clear()
+    return nil
+  end)
 end
 
 return M

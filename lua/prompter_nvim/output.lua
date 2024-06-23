@@ -162,19 +162,35 @@ end
 
 local output_buf = nil
 
+---@type Output
+local output = Output:default()
+
+M.get_output_buffer = function()
+  if not output_buf or not vim.api.nvim_buf_is_valid(output_buf) then
+    output_buf = vim.api.nvim_create_buf(false, true)
+    local output_buf_name = "prompter://output"
+    vim.api.nvim_buf_set_name(output_buf, output_buf_name)
+
+    local buf_options = {
+      buftype = "nofile",
+      bufhidden = "wipe",
+      swapfile = false,
+      filetype = "markdown",
+    }
+    for option, value in pairs(buf_options) do
+      vim.api.nvim_set_option_value(option, value, { buf = output_buf })
+    end
+  end
+  return output_buf
+end
+
 M.open_output_window = function()
   -- Create a new window on the right
   local output_win = vim.api.nvim_open_win(0, true, {
     split = "right",
   })
 
-  -- Create a new buffer if it doesn't exist
-  if not output_buf or not vim.api.nvim_buf_is_valid(output_buf) then
-    output_buf = vim.api.nvim_create_buf(false, true)
-    -- Set the buffer name
-    local output_buf_name = "prompter://output"
-    vim.api.nvim_buf_set_name(output_buf, output_buf_name)
-  end
+  local buf = M.get_output_buffer()
 
   -- Set the buffer options
   local buf_options = {
@@ -184,12 +200,12 @@ M.open_output_window = function()
     filetype = "markdown",
   }
   for option, value in pairs(buf_options) do
-    vim.api.nvim_set_option_value(option, value, { buf = output_buf })
+    vim.api.nvim_set_option_value(option, value, { buf = buf })
   end
 
-  vim.api.nvim_win_set_buf(output_win, output_buf)
+  vim.api.nvim_win_set_buf(output_win, buf)
   local output_lines = vim.split(output:render(), "\n")
-  vim.api.nvim_buf_set_lines(output_buf, 0, -1, false, output_lines)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, output_lines)
 
   -- Set the window options
   local win_options = {
@@ -226,10 +242,16 @@ M.toggle_output_window = function()
 end
 
 M.refresh_output_buffer = function()
-  if output_buf then
-    local output_lines = vim.split(output:render(), "\n")
-    vim.api.nvim_buf_set_lines(output_buf, 0, -1, false, output_lines)
-  end
+  local buf = M.get_output_buffer()
+  local output_lines = vim.split(output:render(), "\n")
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, output_lines)
+end
+
+--- @generic T
+--- @param cb fun(o: Output): T
+--- @return T
+M.with_global_output = function(cb)
+  return cb(output)
 end
 
 return M
