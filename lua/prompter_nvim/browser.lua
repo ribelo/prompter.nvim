@@ -20,7 +20,7 @@ local GenerateContentRequest =
 local openai_api = require("prompter_nvim.openai.api")
 local groq_api = require("prompter_nvim.groq.api")
 
-local OutputContent = require("prompter_nvim.output").Content
+local Content = require("prompter_nvim.output").Content
 
 local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
@@ -223,15 +223,23 @@ M.show_browser = function(context)
       local prompt = actions_state.get_selected_entry().value
       prompt:fill(context)
 
-      ---@param prompt GenerateContentRequest
+      ---@param request GenerateContentRequest
       ---@diagnostic disable-next-line: redefined-local
-      local send = function(prompt)
-        prompt:send(function(_err, res)
+      local send = function(request)
+        request:send(function(_err, res)
           vim.notify("Got response from llm")
-          local content = OutputContent:new(res:content())
+          local content_string = res:content()
+          local last_requested_message_content = prompt:last_message_content()
+          if last_requested_message_content then
+            content_string = last_requested_message_content
+              .. "\n"
+              .. content_string
+          end
+
+          local content = Content:new(content_string, prompt.remove_tags)
           if content then
-            vim.fn.setreg("a", content.content)
             OUTPUT:add_content(content)
+            vim.fn.setreg("a", content:cleanup())
           end
         end)
       end
