@@ -65,10 +65,8 @@ function GenerateContentResponse:content()
   elseif self.type == RequestType.Anthropic then
     local res = self.res
     ---@cast res ClaudeMessagesResponse
-    vim.print(vim.inspect({ res = res }))
     return res.content[1].text
   else
-    vim.print(vim.inspect({ response = self.res }))
     error("Unsupported request type: " .. tostring(self.type))
   end
 end

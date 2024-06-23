@@ -31,15 +31,9 @@ end
 --- @param tools GeminiTool[]
 --- @return GeminiContent?
 function GeminiGenerateContentResponse:invoke_function_calls(tools)
-  vim.print("GeminiGenerateContentResponse:invoke_function_calls")
   local content = Content:new_user()
   for _, part in ipairs(self.candidates[1].content.parts) do
-    vim.print("foo", vim.inspect({ fn = part.functionCall }))
     if part.functionCall then
-      vim.print(
-        "GeminiGenerateContentResponse:invoke_function_calls have function call",
-        part.functionCall.name
-      )
       local tool = find_tool(part.functionCall.name, tools)
       if tool then
         local function_response = tool:invoke(part.functionCall.args)
@@ -183,7 +177,6 @@ function GenerateContentRequest:from_prompt(prompt)
   if prompt.tools and #prompt.tools > 0 then
     local tools = {}
     for _, tool_name in ipairs(prompt.tools) do
-      vim.print({ tool_name = tool_name })
       ---@type GeminiTool?
       local tool = TOOLS[tool_name]
       if tool then
@@ -196,9 +189,7 @@ function GenerateContentRequest:from_prompt(prompt)
   end
   request.model = prompt.model
   for _, message in ipairs(prompt.messages) do
-    vim.print({ message = message })
     local role = Role:translate(message.role)
-    vim.print(vim.inspect({ content2 = message.content, role = role }))
     request:add_content(Content:new(message.content, role))
   end
 
@@ -212,13 +203,10 @@ function GenerateContentRequest:handle(response, on_result)
   if function_responses and not function_responses:is_empty() then
     local response_content =
       Content:new(response.candidates[1].content, Role.Model)
-    vim.print(vim.inspect({ response = response.candidates[1].content }))
     self:add_content(response_content)
     self:add_content(function_responses)
-    -- vim.print(vim.inspect({ self = self }))
     self:send(on_result)
   else
-    vim.print(vim.inspect({ response = response }))
     vim.schedule_wrap(on_result)(nil, response)
   end
 end
