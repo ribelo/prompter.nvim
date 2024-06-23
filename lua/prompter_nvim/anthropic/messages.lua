@@ -12,21 +12,22 @@ local models = {
 }
 
 ---@class ClaudeMessagesRequest
----@field messages ClaudeMessage
+---@field messages ClaudeMessage[] Messages to send to Claude
 ----@field tools Tools
----@field model string
----@field system string?
----@field max_tokens integer
----@field stop_sequences string[]?
----@field stream boolean?
----@field temperature number?
----@field top_p number?
----@field top_k integer?
+---@field model string Model to use for the request
+---@field system string? Optional system message
+---@field max_tokens integer Maximum number of tokens in the response
+---@field stop_sequences string[]? Optional sequences to stop generation
+---@field stream boolean? Whether to stream the response
+---@field temperature number? Controls randomness (0.0 to 1.0)
+---@field top_p number? Controls diversity via nucleus sampling
+---@field top_k integer? Limits vocabulary to top K tokens
 local MessagesRequest = {}
 MessagesRequest.__index = MessagesRequest
 
----@param data table
----@return ClaudeMessagesRequest
+--- Creates a new ClaudeMessagesRequest object
+---@param data table Table containing request parameters
+---@return ClaudeMessagesRequest New ClaudeMessagesRequest instance
 function MessagesRequest:new(data)
   return setmetatable(data, { __index = self })
 end
@@ -130,7 +131,6 @@ function MessagesRequest:from_prompt(prompt)
   -- Add each message from the prompt to the request.
   for _, message in ipairs(prompt.messages) do
     local role = Role:from(message.role)
-    vim.print({ raw = message.role, role = role })
     request:add_message(role, Text:new(message.content))
   end
 
@@ -222,8 +222,6 @@ function MessagesRequest:send(on_result)
   if self.top_k then
     body.top_k = self.top_k
   end
-  vim.print(vim.inspect({ body = body }))
-  vim.print(vim.inspect({ json = vim.json.encode(body) }))
 
   -- Send the request using plenary.curl
   curl.post(url, {
