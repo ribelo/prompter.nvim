@@ -1,18 +1,20 @@
 ---@type table
 local lyaml = require("lyaml")
 
+local context = require("prompter_nvim.context")
+
 ---@class Prompt
 ---@field file_path string Prompt file path.
 ---@field name string Prompt name.
 ---@field vendor string[] List of vendors.
----@field model string? Model.
----@field max_tokens integer? Maximum number of tokens.
----@field temperature number? Temperature setting.
----@field stop_sequences string[]? The set of character sequences that will stop output generation
----@field remove string[] List of string to remove.
+---@field model? string Model.
+---@field max_tokens? integer Maximum number of tokens.
+---@field temperature? number Temperature setting.
+---@field stop_sequences? string[] The set of character sequences that will stop output generation
+---@field remove_tags? string[] List of string to remove.
 ---@field system string System message.
 ---@field messages Message[] List of messages.
----@field tools string[]?
+---@field tools? string[]
 --- Prompt class definition
 local Prompt = {}
 Prompt.__index = Prompt
@@ -81,6 +83,16 @@ function Prompt:from_yaml(file_path)
   return result
 end
 
+--- Get the content of the last message
+--- @return string? Content of the last message, or nil if there are no messages
+function Prompt:last_message_content()
+  if #self.messages == 0 then
+    return nil
+  end
+  local last_message = self.messages[#self.messages]
+  return last_message.role ~= "user" and last_message.content or nil
+end
+
 ---@class BasicBufferParams
 ---@field buffnr integer Buffer number
 ---@field winnr integer Window number
@@ -91,20 +103,24 @@ end
 local BasicBufferParams = {}
 BasicBufferParams.__index = BasicBufferParams
 
----@param context string
-function Prompt:fill(context)
+---@param content string
+function Prompt:fill(content)
   -- Loop through all message and replace content.
   for _, message in ipairs(self.messages) do
-    message.content = message.content:gsub("{{context}}", context)
-    message.content =
-      message.content:gsub("{{context_description}}", CONTEXT_DESCRIPTION)
+    message.content = message.content:gsub("{{context}}", content)
+    message.content = message.content:gsub(
+      "{{xml_description}}",
+      context.build_xml_description(content)
+    )
   end
 
   -- Replace context in system message.
   if self.system then
-    self.system = self.system:gsub("{{context}}", context)
-    self.system =
-      self.system:gsub("{{context_description}}", CONTEXT_DESCRIPTION)
+    self.system = self.system:gsub("{{context}}", content)
+    self.system = self.system:gsub(
+      "{{xml_description}}",
+      context.build_xml_description(content)
+    )
   end
 end
 
