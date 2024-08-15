@@ -103,75 +103,23 @@ function M.get_selected_text()
   end
 end
 
----Join the given lines in a string.
----@param lines string[]|nil
----@return string
-M.join_lines = function(lines)
-  local text = ""
-  if lines == nil then
-    return text
-  end
-  ---@cast lines string[]
-  for i, line in ipairs(lines) do
-    text = text .. line
-    if i < #lines then
-      ---@type string
-      text = text .. "\n"
-    end
-  end
-  return text
-end
-
----Ensure that the given text is a string
----@param text string|string[]
----@return string|nil
-M.ensure_get_text = function(text)
-  if type(text) == "string" then
-    return text
-  elseif type(text) == "table" then
-    return M.join_lines(text)
-  else
-    error(string.format("invalid text type: %s", type(text)))
-    return
-  end
-end
-
----Split text into lines
----@param text string
----@return string[]
-M.split_text = function(text)
-  return vim.split(text, "\n", {})
-end
-
----Ensures that the text is a table of lines
----@param text string|string[]
----@return string[]
-M.ensure_get_lines = function(text)
-  if type(text) == "string" then
-    -- Split the text into lines
-    return vim.split(text, "\n", {})
-  elseif type(text) == "table" then
-    -- Return the lines as-is
-    return text
-  else
-    error(string.format("Invalid text type: %s", type(text)))
-  end
-end
-
 ---Replace the content of the buffer with the given text.
----@param text string|string[]
+---@param text string | string[]
 ---@param opts? {buffer?: number}
 M.buffer_replace_content = function(text, opts)
-  ---@type number
-  local buffer_id
-  if opts and opts.buffer then
-    buffer_id = opts.buffer
-  else
-    buffer_id = vim.api.nvim_get_current_buf()
+  local buffer_id = opts and opts.buffer or vim.api.nvim_get_current_buf()
+  local lines = type(text) == "string" and vim.split(text, "\n") or text
+  --- @cast lines string[]
+
+  local ok, err =
+    pcall(vim.api.nvim_buf_set_lines, buffer_id, 0, -1, false, lines)
+  if not ok then
+    vim.notify(
+      "Failed to replace buffer content: " .. err,
+      vim.log.levels.ERROR
+    )
+    return
   end
-  local lines = M.ensure_get_lines(text)
-  ---@cast buffer_id number
-  vim.api.nvim_buf_set_lines(buffer_id, 0, -1, false, lines)
 end
 
 --- Add content at the end of the buffer.
@@ -179,7 +127,8 @@ end
 ---@param opts? {buffer?: number}
 M.buffer_add_content = function(text, opts)
   local buffer_id = opts and opts.buffer or vim.api.nvim_get_current_buf()
-  local lines = M.ensure_get_lines(text)
+  local lines = type(text) == "string" and vim.split(text, "\n") or text
+  --- @cast lines string[]
 
   -- Get the number of lines in the current buffer
   local num_lines = vim.api.nvim_buf_line_count(buffer_id)
@@ -190,18 +139,14 @@ end
 
 ---Replace a range of text in a buffer.
 ---@param text string|string[]
----@param opts {start_row: number, start_col: number, end_row: number, end_col: number, buffer: number}
+---@param opts {start_row: number, start_col: number, end_row: number, end_col: number, buffer?: number}
 M.buffer_replace_range = function(text, opts)
-  local lines = M.ensure_get_lines(text)
-  ---@type number
-  local buffer_id
-  if opts and opts.buffer then
-    buffer_id = opts.buffer
-  else
-    buffer_id = vim.api.nvim_get_current_buf()
-  end
-  ---@cast buffer_id number
-  vim.api.nvim_buf_set_text(
+  local lines = type(text) == "string" and vim.split(text, "\n") or text
+  --- @cast lines string[]
+  local buffer_id = opts.buffer or vim.api.nvim_get_current_buf()
+
+  local ok, err = pcall(
+    vim.api.nvim_buf_set_text,
     buffer_id,
     opts.start_row,
     opts.start_col,
@@ -209,20 +154,20 @@ M.buffer_replace_range = function(text, opts)
     opts.end_col,
     lines
   )
+
+  if not ok then
+    vim.notify("Failed to replace buffer range: " .. err, vim.log.levels.ERROR)
+  end
 end
 
 ---Replaces the current selection with the given text.
 ---@param text string|string[] The text to be used to replace the current selection.
 M.buffer_replace_selection = function(text)
-  ---Retrieve the range of the visual selection.
-  ---@diagnostic disable-next-line: param-type-mismatch
   local range = M.get_visual_range()
-
-  if range == nil then
+  if not range then
     return
   end
 
-  ---Replaces the range of the visual selection with the provided text.
   M.buffer_replace_range(text, {
     start_row = range.start_row,
     start_col = range.start_col,
@@ -233,18 +178,19 @@ end
 
 ---Appends the given text to a given buffer at the provided position.
 ---@param text string|string[] The text to be appended to the buffer.
----@param opts {start_row: number} Options for the buffer append. 'start_row' is the row at which to insert the text; 'buffer' is the buffer to which the text should be added; 'win' is the window from which the buffer should be retrieved.
+---@param opts {start_row: number, buffer?: number, win?: number} Options for the buffer append.
 M.buffer_append_text = function(text, opts)
-  local lines = M.ensure_get_lines(text)
-  local buffer_id = vim.api.nvim_get_current_buf()
-  vim.api.nvim_buf_set_text(
-    buffer_id,
-    opts.start_row + 1,
-    0,
-    opts.start_row + 1,
-    0,
-    lines
-  )
+  local lines =
+    ---@diagnostic disable-next-line: param-type-mismatch
+    vim.split(type(text) == "string" and text or table.concat(text, "\n"), "\n")
+  local buffer = opts.buffer
+    or (opts.win and vim.api.nvim_win_get_buf(opts.win))
+    or vim.api.nvim_get_current_buf()
+  local start_row = opts.start_row or 0
+
+  pcall(function()
+    vim.api.nvim_buf_set_lines(buffer, start_row, start_row, false, lines)
+  end)
 end
 
 ---@param cmd_args table
@@ -292,15 +238,18 @@ M.remove_tags = function(xml_string, tag_list)
   return xml_string
 end
 
----@param xml_string string
----@return string
-M.unescape_xml = function(xml_string)
-  xml_string = xml_string:gsub("&lt;", "<")
-  xml_string = xml_string:gsub("&gt;", ">")
-  xml_string = xml_string:gsub("&amp;", "&")
-  xml_string = xml_string:gsub("&apos;", "'")
-  xml_string = xml_string:gsub("&quot;", '"')
-  return xml_string
+---Escapes special characters in a string for use in XML.
+---@param str string The string to escape.
+---@return string The escaped string.
+M.escape_xml = function(str)
+  local escaped = str:gsub("[<>&'\"]]", {
+    ["<"] = "&lt;",
+    [">"] = "&gt;",
+    ["&"] = "&amp;",
+    ["'"] = "&apos;",
+    ['"'] = "&quot;",
+  })
+  return escaped
 end
 
 --- Generates a random string to be used as an ID.

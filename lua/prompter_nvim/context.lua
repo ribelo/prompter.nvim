@@ -1,3 +1,5 @@
+local nio = require("nio")
+
 local M = {}
 
 --- Represents the visually selected text.
@@ -90,37 +92,37 @@ function Selection:get_selected_text()
   end
 end
 
---- Represents a single code block within a file.
+--- Represents a single content block within a file.
 ---
---- @class CodeBlock
---- @field tag string? XML tag of the code block.
---- @field description string? Description of the code block.
---- @field content string Content of the code block.
---- @field instruction string? Optional instruction for the LLM specific to this code block.
---- @field start_line integer Starting line number of the code block (1-based).
---- @field start_col integer Starting column number of the code block (1-based).
---- @field end_line integer Ending line number of the code block (1-based).
---- @field end_col integer Ending column number of the code block (1-based).
--- Define the CodeBlock class
-local CodeBlock = {}
-CodeBlock.__index = CodeBlock
-M.CodeBlock = CodeBlock
+--- @class ContentBlock
+--- @field tag string? XML tag of the content block.
+--- @field description string? Description of the content block.
+--- @field content string Content of the content block.
+--- @field instruction string? Optional instruction for the LLM specific to this content block.
+--- @field start_line integer Starting line number of the content block (1-based).
+--- @field start_col integer Starting column number of the content block (1-based).
+--- @field end_line integer Ending line number of the content block (1-based).
+--- @field end_col integer Ending column number of the content block (1-based).
+-- Define the ContentBlock class
+local ContentBlock = {}
+ContentBlock.__index = ContentBlock
+M.ContentBlock = ContentBlock
 
---- Creates a new CodeBlock instance from the provided data.
+--- Creates a new ContentBlock instance from the provided data.
 ---
---- @param data CodeBlock Data to initialize the CodeBlock with.
---- @return CodeBlock New CodeBlock instance with the provided data.
-function CodeBlock:new(data)
+--- @param data ContentBlock Data to initialize the ContentBlock with.
+--- @return ContentBlock New ContentBlock instance with the provided data.
+function ContentBlock:new(data)
   return setmetatable(data or {}, { __index = self })
 end
 
---- Creates a new CodeBlock instance from the current selection.
+--- Creates a new ContentBlock instance from the current selection.
 ---
---- @return CodeBlock? New CodeBlock instance containing the selection.
-function CodeBlock:from_selection()
+--- @return ContentBlock? New ContentBlock instance containing the selection.
+function ContentBlock:from_selection()
   local selection = Selection:get_selected_text()
   if selection then
-    local code_block = CodeBlock:new({
+    local content_block = ContentBlock:new({
       tag = nil,
       description = nil,
       content = selection.content,
@@ -130,40 +132,40 @@ function CodeBlock:from_selection()
       end_line = selection.range.end_line,
       end_col = selection.range.end_col,
     })
-    return code_block
+    return content_block
   end
   return nil
 end
 
---- Sets the description of the code block.
+--- Sets the description of the content block.
 ---
---- @param tag string? XML tag of the code block.
-function CodeBlock:set_tag(tag)
+--- @param tag string? XML tag of the content block.
+function ContentBlock:set_tag(tag)
   self.tag = tag
 end
 
---- Sets the description of the code block.
+--- Sets the description of the content block.
 ---
---- @param description string? Description of the code block.
-function CodeBlock:set_description(description)
+--- @param description string? Description of the content block.
+function ContentBlock:set_description(description)
   self.description = description
 end
 
---- Sets the instruction for the LLM specific to this code block.
+--- Sets the instruction for the LLM specific to this content block.
 ---
 --- @param instruction string Instruction for the LLM.
-function CodeBlock:set_instruction(instruction)
+function ContentBlock:set_instruction(instruction)
   self.instruction = instruction
 end
 
---- Represents a file containing code blocks.
+--- Represents a file containing content blocks.
 ---
 --- @class SourceFile
---- @field path string Relative path to the file within the project.
+--- @field uri string URI of the file within the project.
 --- @field cwd string Absolute path to the project's root directory.
 --- @field filetype string Programming language or file type (e.g., "python", "javascript", "html").
---- @field code_blocks CodeBlock[] List of code blocks within the file.
---- @field diagnostics Diagnostic[] List of code blocks within the file.
+--- @field content_blocks ContentBlock[] List of content blocks within the file.
+--- @field diagnostics Diagnostic[] List of content blocks within the file.
 -- Define the SourceFile class
 local SourceFile = {}
 SourceFile.__index = SourceFile
@@ -175,26 +177,26 @@ M.SourceFile = SourceFile
 function SourceFile:default()
   local current_buffer = vim.api.nvim_get_current_buf()
   local obj = setmetatable({}, { __index = self })
-  obj.path = vim.api.nvim_buf_get_name(current_buffer)
+  obj.uri = vim.uri_from_bufnr(current_buffer)
   obj.cwd = vim.fn.getcwd()
   obj.filetype = vim.bo[current_buffer].filetype
-  obj.code_blocks = {}
+  obj.content_blocks = {}
   obj.diagnostics = {}
   return obj
 end
 
---- Adds a code block to the source file.
+--- Adds a content block to the source file.
 ---
---- @param code_block CodeBlock The code block to add.
+--- @param content_block ContentBlock The content block to add.
 --- @return SourceFile The current SourceFile instance for method chaining.
-function SourceFile:add_code_block(code_block)
-  table.insert(self.code_blocks, code_block)
+function SourceFile:add_content_block(content_block)
+  table.insert(self.content_blocks, content_block)
   return self
 end
 
 --- Adds a diagnostic to the source file.
 ---
---- @param diagnostic Diagnostic The code block to add.
+--- @param diagnostic Diagnostic The content block to add.
 --- @return SourceFile The current SourceFile instance for method chaining.
 function SourceFile:add_diagnostic(diagnostic)
   table.insert(self.diagnostics, diagnostic)
@@ -205,13 +207,50 @@ end
 ---
 --- @return SourceFile? New SourceFile instance containing the selection.
 function SourceFile.from_selection()
-  local code_block = CodeBlock:from_selection()
-  if code_block then
+  local content_block = ContentBlock:from_selection()
+  if content_block then
     local self = SourceFile:default()
-    self:add_code_block(code_block)
+    self:add_content_block(content_block)
     return self
   end
   return nil
+end
+
+--- Reads the content of a file and creates a SourceFile instance.
+---
+--- @param file_path string The path to the file to be read.
+--- @return SourceFile|nil The SourceFile instance if successful, nil otherwise.
+function SourceFile:read_file(file_path)
+  local content, err = nio.fn.readfile(file_path)
+  if err then
+    vim.notify(
+      "Failed to read file: " .. err,
+      vim.log.levels.ERROR,
+      { title = "Cerebro" }
+    )
+    return nil
+  end
+
+  local uri = vim.uri_from_fname(file_path)
+  local cwd = vim.fn.getcwd()
+  local filetype = vim.filetype.match({ filename = file_path }) or ""
+
+  local source_file = SourceFile:default()
+  source_file.uri = uri
+  source_file.cwd = cwd
+  source_file.filetype = filetype
+
+  local content_block = ContentBlock:new({
+    content = table.concat(content, "\n"),
+    start_line = 1,
+    start_col = 1,
+    end_line = #content,
+    end_col = #content[#content],
+  })
+
+  source_file:add_content_block(content_block)
+
+  return source_file
 end
 
 --- Represents a diagnostic message, based on the format returned by Neovim.
@@ -262,6 +301,7 @@ end
 --- @param diagnostic_data table Data to populate the Diagnostic instance.
 --- @return Diagnostic New Diagnostic instance.
 function Diagnostic:new(diagnostic_data)
+  ---@type table<string, any>
   local obj = setmetatable({}, { __index = self })
   for k, v in pairs(diagnostic_data) do
     obj[k] = v
@@ -275,7 +315,7 @@ end
 --- @field id number Unique identifier of the prompt.
 --- @field description string? Optional general description for the LLM regarding the entire prompt.
 --- @field instruction string? Optional general instruction for the LLM regarding the entire prompt.
---- @field files SourceFile[] List of files with code blocks.
+--- @field files SourceFile[] List of files with content blocks.
 -- Define the Prompt class
 local Context = {}
 Context.__index = Context
@@ -283,7 +323,7 @@ M.Context = Context
 
 --- Creates a new Prompt instance from the provided data.
 ---
---- @param data Context Data to initialize the Prompt with.
+--- @param data Context | nil Data to initialize the Prompt with.
 --- @return Context New Prompt instance with the provided data.
 function Context:new(data)
   data = data or {}
@@ -307,6 +347,29 @@ function Context:default()
   return Context:new(data)
 end
 
+--- Adds a new file to the Context.
+---
+--- @param file_path string The path to the file to be added.
+--- @return boolean Success True if the file was successfully added, false otherwise.
+function Context:add_file(file_path)
+  if not file_path or type(file_path) ~= "string" then
+    vim.notify(
+      "Invalid file path provided",
+      vim.log.levels.ERROR,
+      { title = "Cerebro" }
+    )
+    return false
+  end
+
+  local source_file = SourceFile:read_file(file_path)
+  if not source_file then
+    return false
+  end
+
+  table.insert(self.files, source_file)
+  return true
+end
+
 --- Sets the description for the prompt.
 ---
 --- @param self Context The Prompt instance.
@@ -323,48 +386,48 @@ function Context:set_instruction(instruction)
   self.instruction = instruction
 end
 
---- Retrieves a SourceFile instance based on its path.
+--- Retrieves a SourceFile instance based on its uri.
 ---
---- @param path string The path of the SourceFile to retrieve.
---- @return SourceFile|nil The SourceFile instance with the given path, or nil if not found.
-function Context:get_source_file(path)
+--- @param uri string The URI of the SourceFile to retrieve.
+--- @return SourceFile|nil The SourceFile instance with the given URI, or nil if not found.
+function Context:get_source_file(uri)
   for _, file in ipairs(self.files) do
-    if file.path == path then
+    if file.uri == uri then
       return file
     end
   end
   return nil
 end
 
---- @param tag string? XML tag of the code block.
---- @param description string? Description of the code block.
---- @param instruction string? Instructions for the LLM specific to this code block.
+--- @param tag string? XML tag of the content block.
+--- @param description string? Description of the content block.
+--- @param instruction string? Instructions for the LLM specific to this content block.
 --- @return Context? Prompt instance with the added selection.
 function Context:add_selection(tag, description, instruction)
-  -- Get the selected text as a CodeBlock
-  local code_block = CodeBlock:from_selection()
+  -- Get the selected text as a ContentBlock
+  local content_block = ContentBlock:from_selection()
   -- If no selection is found, return without doing anything
-  if not code_block then
+  if not content_block then
     return
   end
   -- Set the XML tag of the code block if provided
   if tag then
-    code_block:set_tag(tag)
+    content_block:set_tag(tag)
   end
   -- Set the description of the code block if provided
   if description then
-    code_block:set_description(description)
+    content_block:set_description(description)
   end
   -- Set the instruction to the code block if provided
   if instruction then
-    code_block:set_instruction(instruction)
+    content_block:set_instruction(instruction)
   end
   -- Cast the code_block to CodeBlock for type safety
-  ---@cast code_block CodeBlock
+  ---@cast content_block ContentBlock
   -- Find the current file in the list of source files
   local current_file = nil
   for _, file in ipairs(self.files) do
-    if file.path == vim.api.nvim_buf_get_name(0) then
+    if file.uri == vim.api.nvim_buf_get_name(0) then
       current_file = file
       break
     end
@@ -378,9 +441,28 @@ function Context:add_selection(tag, description, instruction)
     ---@cast current_file SourceFile
   end
   -- Add the code block to the current file
-  current_file:add_code_block(code_block)
+  current_file:add_content_block(content_block)
   -- Return the updated Prompt instance
+  M.refresh_context_buffer()
   return self
+end
+
+--- Removes and returns the last selection from the context.
+---
+--- @return ContentBlock|nil The last selection, or nil if no selections exist.
+function Context:pop_last()
+  local current_uri = vim.uri_from_bufnr(vim.api.nvim_get_current_buf())
+  for i, file in ipairs(self.files) do
+    if file.uri == current_uri then
+      local last_block = table.remove(file.content_blocks)
+      if #file.content_blocks == 0 then
+        table.remove(self.files, i)
+      end
+      M.refresh_context_buffer()
+      return last_block
+    end
+  end
+  return nil
 end
 
 --- Adds diagnostic to the prompt.
@@ -388,19 +470,13 @@ end
 --- @param diagnostic table Neovim diagnostic data map.
 --- @return Context Prompt instance with added diagnostics.
 function Context:add_diagnostic(diagnostic)
-  local current_file = nil
-  for _, file in ipairs(self.files) do
-    if file.path == vim.api.nvim_buf_get_name(0) then
-      current_file = file
-      break
-    end
-  end
+  local current_file = self:get_source_file(vim.uri_from_bufnr(0))
   if not current_file then
     current_file = SourceFile:default()
     table.insert(self.files, current_file)
-    ---@cast current_file SourceFile
   end
   current_file:add_diagnostic(diagnostic)
+  M.refresh_context_buffer()
   return self
 end
 
@@ -422,176 +498,224 @@ function Context:clear()
   self.description = nil
   self.instruction = nil
   self.files = {}
+  M.refresh_context_buffer()
   return self
 end
 
---- Displays the prompt in a beautifully formatted Markdown string.
----
---- @return string The formatted Markdown string representing the prompt.
-function Context:to_markdown()
-  ---@type string
-  local markdown = "# Context\n\n"
-
-  -- ## General Instructions
-  -- This section displays any general instructions provided for the prompt.
-  if self.instruction and self.instruction ~= "" then
-    markdown = markdown .. "## Instruction\n\n"
-    markdown = markdown .. self.instruction .. "\n\n"
-  end
-
-  -- ## Source Files
-  -- This section displays the source files with code blocks and their respective descriptions, instructions, and diagnostics.
-  for i, file in ipairs(self.files) do
-    markdown = markdown .. "## " .. "File nr: " .. i .. "\n\n"
-    if file.path or file.cwd or file.filetype then
-      markdown = markdown .. "### File Metadata \n\n"
-      markdown = markdown .. "- path: " .. file.path .. "\n"
-      markdown = markdown .. "- cwd: " .. file.cwd .. "\n"
-      markdown = markdown .. "- filetype: " .. file.filetype .. "\n"
-    end
-
-    -- ### Code Blocks
-    -- This section displays the code blocks within each source file.
-    for j, code_block in ipairs(file.code_blocks) do
-      markdown = markdown .. "### Code Block nr: " .. j .. "\n\n"
-
-      markdown = markdown .. "#### Code Block Metadata \n\n"
-      markdown = markdown .. "- start_line: " .. code_block.start_line .. "\n"
-      markdown = markdown .. "- start_col: " .. code_block.start_col .. "\n"
-      markdown = markdown .. "- end_line: " .. code_block.end_line .. "\n"
-      markdown = markdown .. "- end_col: " .. code_block.end_col .. "\n\n"
-
-      if code_block.description and code_block.description ~= "" then
-        markdown = markdown .. "#### Description" .. "\n\n"
-        markdown = markdown .. code_block.description .. "\n\n"
-      end
-
-      -- #### Instructions
-      -- This section displays any instructions specific to a code block.
-      if code_block.instruction and code_block.instruction ~= "" then
-        markdown = markdown .. "#### Code Block Instruction\n\n"
-        markdown = markdown .. code_block.instruction .. "\n\n"
-      end
-
-      -- Code block content
-      markdown = markdown .. "```" .. file.filetype .. "\n"
-      markdown = markdown .. code_block.content .. "\n"
-      markdown = markdown .. "```\n\n"
-    end
-
-    -- ### Diagnostics
-    -- This section displays any diagnostics related to a source file.
-    if file.diagnostics and #file.diagnostics > 0 then
-      markdown = markdown .. "### Diagnostics\n\n"
-      for _, diagnostic in ipairs(file.diagnostics) do
-        markdown = markdown
-          .. "- **"
-          .. diagnostic.severity
-          .. ":** "
-          .. diagnostic.message
-          .. "\n"
-      end
-      markdown = markdown .. "\n"
-    end
-  end
-
-  return markdown
+local function escape_xml(s)
+  return (
+    s:gsub("&", "&amp;")
+      :gsub("<", "&lt;")
+      :gsub(">", "&gt;")
+      :gsub("'", "&apos;")
+      :gsub('"', "&quot;")
+  )
 end
 
---- Returns the prompt as a pretty-formatted JSON string.
----
---- @return string JSON string representing the prompt.
-function Context:to_json()
-  return vim.fn.json_encode(self)
-end
-
----
---- Converts the prompt to an XML string suitable for passing to an LLM.
----
---- @param self Context
---- @return string XML representation of the prompt.
 function Context:to_xml()
-  local xml = "<context>\n"
-  if self.instruction and self.instruction ~= "" then
-    xml = xml .. "<instruction>" .. self.instruction .. "</instruction>\n"
+  local parts = { "<context>" }
+
+  if self.instruction then
+    table.insert(
+      parts,
+      string.format("<instruction>%s</instruction>", self.instruction)
+    )
   end
 
   for _, file in ipairs(self.files) do
-    xml = xml .. '<file path="' .. file.path .. '">\n'
+    table.insert(parts, string.format('<file uri="%s">', file.uri))
     if file.filetype then
-      xml = xml .. "<filetype>" .. file.filetype .. "</filetype>\n"
+      table.insert(
+        parts,
+        string.format("<filetype>%s</filetype>", file.filetype)
+      )
     end
-    if #file.code_blocks > 0 then
-      for _, code_block in ipairs(file.code_blocks) do
-        xml = xml .. "<code_block>\n"
-        if code_block.description and code_block.description ~= "" then
-          xml = xml
-            .. "<description>"
-            .. code_block.description
-            .. "</description>\n"
-        end
-        if code_block.instruction and code_block.instruction ~= "" then
-          xml = xml
-            .. "<instruction>"
-            .. code_block.instruction
-            .. "</instruction>\n"
-        end
-        xml = xml .. "<content>\n"
-        if code_block.tag and code_block.tag ~= "" then
-          xml = xml .. "<" .. code_block.tag .. ">"
-        end
-        xml = xml .. code_block.content
-        if code_block.tag and code_block.tag ~= "" then
-          xml = xml .. "</" .. code_block.tag .. ">"
-        end
-        xml = xml .. "\n</content>\n"
-        xml = xml
-          .. "<start_line>"
-          .. code_block.start_line
-          .. "</start_line>\n"
-        xml = xml .. "<start_col>" .. code_block.start_col .. "</start_col>\n"
-        xml = xml .. "<end_line>" .. code_block.end_line .. "</end_line>\n"
-        xml = xml .. "<end_col>" .. code_block.end_col .. "</end_col>\n"
-        xml = xml .. "</code_block>\n"
+
+    for _, content_block in ipairs(file.content_blocks) do
+      table.insert(parts, "<block>")
+      if content_block.description then
+        table.insert(
+          parts,
+          string.format(
+            "<description>%s</description>",
+            content_block.description
+          )
+        )
       end
-    end
-    if #file.diagnostics > 0 then
-      for _, diagnostic in ipairs(file.diagnostics) do
-        xml = xml .. "<diagnostic>\n"
-        if diagnostic.message then
-          xml = xml .. "<message>\n" .. diagnostic.message .. "</message>\n"
-        end
-        if diagnostic.code then
-          xml = xml .. "<code>\n" .. diagnostic.code .. "</code>\n"
-        end
-        if diagnostic.source then
-          xml = xml .. "<source>\n" .. diagnostic.source .. "</source>\n"
-        end
-        if diagnostic.severity then
-          xml = xml
-            .. "<severity>\n"
-            .. severity_mapping[diagnostic.severity]
-            .. "</severity>\n"
-        end
-        xml = xml .. "<start_line>" .. diagnostic.lnum .. "</start_line>\n"
-        xml = xml .. "<start_col>" .. diagnostic.col .. "</start_col>\n"
-        xml = xml .. "<end_line>" .. diagnostic.end_lnum .. "</end_line>\n"
-        xml = xml .. "<end_col>" .. diagnostic.end_col .. "</end_col>\n"
-        xml = xml .. "</diagnostic>\n"
+      if content_block.instruction then
+        table.insert(
+          parts,
+          string.format(
+            "<instruction>%s</instruction>",
+            content_block.instruction
+          )
+        )
       end
+      table.insert(parts, "<content>")
+      table.insert(parts, string.format("<%s>", content_block.tag or "default"))
+      table.insert(parts, content_block.content)
+      table.insert(
+        parts,
+        string.format("</%s>", content_block.tag or "default")
+      )
+      table.insert(parts, "</content>")
+      table.insert(
+        parts,
+        string.format("<start_line>%d</start_line>", content_block.start_line)
+      )
+      table.insert(
+        parts,
+        string.format("<start_col>%d</start_col>", content_block.start_col)
+      )
+      table.insert(
+        parts,
+        string.format("<end_line>%d</end_line>", content_block.end_line)
+      )
+      table.insert(
+        parts,
+        string.format("<end_col>%d</end_col>", content_block.end_col)
+      )
+      table.insert(parts, "</block>")
     end
-    xml = xml .. "</file>\n"
+
+    for _, diagnostic in ipairs(file.diagnostics) do
+      table.insert(parts, "<diagnostic>")
+      if diagnostic.message then
+        table.insert(
+          parts,
+          string.format("<message>%s</message>", diagnostic.message)
+        )
+      end
+      if diagnostic.code then
+        table.insert(parts, string.format("%s", diagnostic.code))
+      end
+      if diagnostic.source then
+        table.insert(
+          parts,
+          string.format("<source>%s</source>", diagnostic.source)
+        )
+      end
+      if diagnostic.severity then
+        table.insert(
+          parts,
+          string.format(
+            "<severity>%s</severity>",
+            tostring(diagnostic.severity)
+          )
+        )
+      end
+      table.insert(
+        parts,
+        string.format("<start_line>%d</start_line>", diagnostic.lnum)
+      )
+      table.insert(
+        parts,
+        string.format("<start_col>%d</start_col>", diagnostic.col)
+      )
+      table.insert(
+        parts,
+        string.format("<end_line>%d</end_line>", diagnostic.end_lnum)
+      )
+      table.insert(
+        parts,
+        string.format("<end_col>%d</end_col>", diagnostic.end_col)
+      )
+      table.insert(parts, "</diagnostic>")
+    end
+
+    table.insert(parts, "</file>")
   end
 
-  xml = xml .. "</context>\n"
-  return xml
+  table.insert(parts, "</context>")
+  return table.concat(parts, "\n")
+end
+
+local context_buf = nil
+local context = Context:default()
+
+function M.get_context()
+  return context
+end
+
+function M.get_context_buffer()
+  if not context_buf or not nio.api.nvim_buf_is_valid(context_buf) then
+    context_buf = nio.api.nvim_create_buf(false, true)
+    local context_buf_name = "prompter://context"
+    nio.api.nvim_buf_set_name(context_buf, context_buf_name)
+
+    local buf_options = {
+      buftype = "nofile",
+      bufhidden = "wipe",
+      swapfile = false,
+      filetype = "xml",
+    }
+    for option, value in pairs(buf_options) do
+      nio.api.nvim_set_option_value(option, value, { buf = context_buf })
+    end
+  end
+  return context_buf
+end
+
+M.open_context_window = function()
+  local context_win = nio.api.nvim_open_win(0, true, {
+    split = "right",
+  })
+
+  local buf = M.get_context_buffer()
+
+  nio.api.nvim_win_set_buf(context_win, buf)
+  local context_lines = vim.split(context:to_xml(), "\n")
+  nio.api.nvim_buf_set_lines(buf, 0, -1, false, context_lines)
+
+  local win_options = {
+    number = false,
+    relativenumber = false,
+    wrap = false,
+  }
+
+  for option, value in pairs(win_options) do
+    nio.api.nvim_set_option_value(option, value, { win = context_win })
+  end
+end
+
+M.close_context_window = function()
+  local win_id = vim.fn.win_findbuf(context_buf)[1]
+
+  if win_id then
+    nio.api.nvim_win_close(win_id, false)
+  else
+    vim.notify("Context window not found", vim.log.levels.WARN)
+  end
+end
+
+M.toggle_context_window = function()
+  local win_id = vim.fn.win_findbuf(context_buf)[1]
+
+  if win_id then
+    M.close_context_window()
+  else
+    M.open_context_window()
+  end
+end
+
+M.refresh_context_buffer = function()
+  local buf = M.get_context_buffer()
+  local context_lines = vim.split(context:to_xml(), "\n")
+  nio.api.nvim_buf_set_lines(buf, 0, -1, false, context_lines)
+end
+
+--- @generic T
+--- @param cb fun(c: Context): T
+--- @return T
+M.with_global_context = function(cb)
+  return cb(context)
 end
 
 M.xml_description = {
   intro = [[
 # XML Structure for Code Analysis
 
-You will receive requests in an XML format that encapsulates context, code blocks, instructions, and diagnostics for various code-related tasks. Your primary responsibility is to parse this XML structure, comprehend its contents, and generate appropriate responses tailored to the specific requirements outlined within.
+You will receive requests in an XML format that encapsulates context, content blocks, instructions, and diagnostics for various code-related tasks. Your primary responsibility is to parse this XML structure, comprehend its contents, and generate appropriate responses tailored to the specific requirements outlined within.
 
 This document describes in detail the XML structure used for these code analysis and modification tasks.
 ]],
@@ -607,27 +731,27 @@ The root element that encompasses all relevant information from user perspective
 ### `<file>`
 
 Represents a single file within the context. This element allows for organization of code blocks and diagnostics within specific files.
-- Attribute `path`: Specifies the file path, helping to understand the file's location within a project structure.
+- Attribute `uri`: Specifies the URI, helping to understand the file's location within a project structure.
 - `<filetype>`: Specifies the file type, primarily indicating the programming language used.
 
-### `<code_block>`
+### `<content_block>`
 
-Represents a distinct block of code within a file. This is a crucial element as it contains the actual code you'll be working with, analyzing, or modifying.
+Represents a distinct block within a file. This is a crucial element as it contains the actual code you'll be working with, analyzing, or modifying.
 
-- Location tags: `<start_line>`, `<start_col>`, `<end_line>`, `<end_col>`: These specify the exact location of the code block within the file, helping to understand its context and relationships with other code blocks.
-- `<content>`: Contains the actual code content. This is the primary focus of your analysis or modification efforts.
+- Location tags: `<start_line>`, `<start_col>`, `<end_line>`, `<end_col>`: These specify the exact location of the content block within the file, helping to understand its context and relationships with other content blocks.
+- `<content>`: Contains the actual block content. This is the primary focus of your analysis or modification efforts.
 ]],
   instruction = [[
-- `<instruction>`: Specific instructions or prompts related to this particular code block. This guides your actions for this specific piece of code.
+- `<instruction>`: Specific instructions or prompts related to this particular content block. This guides your actions for this specific piece of code.
 ]],
   description = [[
-- `<description>`: Providing additional context, comment or explanation about the code block's purpose, functionality, or any other relevant details.
+- `<description>`: Providing additional context, comment or explanation about the content block's purpose, functionality, or any other relevant details.
 ]],
   test = [[
 - `<test>`: Indicates that the code requires test creation. Your task may involve writing appropriate test cases to ensure the code's correctness and functionality.
 ]],
-  document = [[
-- `<document>`: Indicates that the code needs documentation. This could involve adding comments, writing docstrings, creating function/method descriptions, or even generating separate documentation files.
+  doc = [[
+- `<doc>`: Indicates that the code needs documentation. This could involve adding comments, writing docstrings, creating function/method descriptions, or even generating separate documentation files.
 ]],
   hole = [[
 - `<hole>`: Represents a placeholder or gap in the code that needs to be filled. Your task is to provide appropriate code to complete the functionality.
@@ -651,8 +775,11 @@ Represents a distinct block of code within a file. This is a crucial element as 
 - `<fix>`: Suggests there's a bug in the code that needs to be identified and fixed. You should find the issue and provide a solution.
 ]],
   grug = [[
-- `<grug>`: Suggests that the code should be simplified to "Grug-brained Developer" style, emphasizing straightforward solutions and minimal complexity.
+- `<grug>`: Suggests that the code should be simplified to "Grug-brained Developer" style, emphasizing straightforward solutions and minimal complexity without changing its external behavior.
 ]],
+  example = [[
+  - `<example>`: Provides a specific instance or illustration that the model should follow. This is something the user wants to show as a representative case or pattern to be emulated in the response or implementation.
+  ]],
   diagnostic = [[
 ### `<diagnostic>`
 Represents a specific issue, warning, or informational message related to the source file. These diagnostics provide valuable insights into potential problems or areas that need attention.
@@ -664,6 +791,9 @@ Represents a specific issue, warning, or informational message related to the so
 ]],
   outro = [[
 This XML structure provides a comprehensive framework for specifying various code-related tasks, from simple analyses to complex refactoring operations. Each tag is designed to convey specific information or instructions relevant to the code analysis process. Your task is to interpret this structure and respond accordingly, focusing on the particular requirements specified in each request.
+]],
+  project_file = [[
+It represents a file that contains project-wide information, configurations, or settings relevant to the code being analyzed. This file can provide important context about the overall project structure, dependencies, or other global parameters that may influence the analysis or modifications of individual code blocks.
 ]],
 }
 

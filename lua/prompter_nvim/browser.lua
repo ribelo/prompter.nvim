@@ -1,3 +1,5 @@
+local nio = require("nio")
+
 local M = {}
 
 local Prompt = require("prompter_nvim.prompt").Prompt
@@ -17,12 +19,6 @@ local openai_api = require("prompter_nvim.openai.api")
 local groq_api = require("prompter_nvim.groq.api")
 
 local output = require("prompter_nvim.output")
-
-local pickers = require("telescope.pickers")
-local finders = require("telescope.finders")
-local conf = require("telescope.config").values
-local actions = require("telescope.actions")
-local actions_state = require("telescope.actions.state")
 
 local global_prompt_path = vim.fn.stdpath("data") .. "/prompts"
 
@@ -115,9 +111,10 @@ local function get_saved_prompts()
   return prompts
 end
 
----@param prompt Prompt
----@param on_choice fun(prompt: GenerateContentRequest)
-local function choose_model(prompt, on_choice)
+--- @async
+--- @param prompt Prompt
+--- @return string | nil, Prompt | nil
+local function choose_model(prompt)
   ---@param vendor string
   ---@return string[]
   local function get_models(vendor)
@@ -149,111 +146,96 @@ local function choose_model(prompt, on_choice)
     end
   end
 
-  vim.ui.select(
-    items,
-    {
-      prompt = "Choose a Model",
+  ---@type ChooserItem?
+  local item = nio.ui.select(items, {
+    prompt = "Choose a Model",
 
-      ---@param item ChooserItem
-      format_item = function(item)
-        return item.vendor .. ": " .. item.model
-      end,
-    },
-    ---@param item ChooserItem?
-    function(item)
-      if not item then
-        return
-      end
-      prompt.model = item.model
-
-      if item.vendor == "anthropic" then
-        local request = ClaudeMessagesRequest:from_prompt(prompt):build()
-        on_choice(GenerateContentRequest:from_claude(request))
-      elseif item.vendor == "google" then
-        local request = GeminiChatCompletionRequest:from_prompt(prompt):build()
-        on_choice(GenerateContentRequest:from_gemini(request))
-      else
-        vim.notify(
-          "Invalid vendor. Please choose 'google'.",
-          vim.log.levels.ERROR
-        )
-      end
-    end
-  )
-end
-
---- @param context string
-M.show_browser = function(context)
-  local prompts = get_saved_prompts()
-
-  ---@param prompt Prompt
-  local entry_maker = function(prompt)
-    return {
-      value = prompt,
-      display = prompt.name,
-      ordinal = prompt.name,
-    }
-  end
-
-  local finder = finders.new_table({
-    results = prompts,
-    entry_maker = entry_maker,
+    ---@param item ChooserItem
+    format_item = function(item)
+      return item.vendor .. ": " .. item.model
+    end,
   })
 
-  local opts = require("telescope.themes").get_dropdown()
-  opts.finder = finder
-  opts.attach_mappings = function(_buf, map)
-    ---@class TelescopeEntry
-    ---@field value Prompt
-    ---@field display string
-    ---@field ordinal string
-    local entry = actions_state.get_selected_entry()
+  if not item then
+    return
+  end
+  prompt.model = item.model
 
-    map("i", "<c-o>", function()
-      local file_path = entry.value.file_path
-      vim.cmd("e " .. file_path)
-    end)
+  return item.vendor, prompt
+end
 
-    actions.select_default:replace(function()
-      ---@type Prompt
-      local prompt = actions_state.get_selected_entry().value
-      prompt:fill(context)
+---@enum Browser.ActionType
+local ActionType = {
+  Send = "send",
+  Prepare = "prepare",
+}
 
-      ---@param request GenerateContentRequest
-      ---@diagnostic disable-next-line: redefined-local
-      local send = function(request)
-        request:send(function(_err, res)
-          vim.notify("Got response from llm")
-          local content_string = res:content()
-          local last_requested_message_content = prompt:last_message_content()
-          if last_requested_message_content then
-            content_string = last_requested_message_content
-              .. "\n"
-              .. content_string
-          end
+--- @async
+--- @param context string
+--- @param action Browser.ActionType | nil
+M.show_browser = function(context, action)
+  local action = action or ActionType.Send
+  local prompts = get_saved_prompts()
 
-          local content = output.Content:new(content_string, prompt.remove_tags)
-          if content then
-            output.with_global_output(function(o)
-              o:add_content(content)
-              vim.fn.setreg("a", content:cleanup())
-              return nil
-            end)
-          end
-        end)
-      end
-      choose_model(prompt, send)
-    end)
-    return true
+  --- @type Prompt?
+  local prompt = nio.ui.select(prompts, {
+    prompt = "Choose a Prompt",
+    format_item = function(prompt)
+      return prompt.name
+    end,
+  })
+
+  if not prompt then
+    return
   end
 
-  pickers
-    .new(opts, {
-      prompt_title = "cerebro",
-      ---@diagnostic disable-next-line: no-unknown
-      sorter = conf.generic_sorter(opts),
-    })
-    :find()
+  prompt:fill(context)
+
+  --- @async
+  --- @param request ClaudeMessagesRequest
+  local function send(request)
+    local response = request:send()
+    if not response then
+      return
+    end
+    response:log_api_usage()
+    local content_string = response:get_content()
+    local last_requested_message_content = prompt:last_message_content()
+    if last_requested_message_content then
+      for _, text in ipairs(last_requested_message_content) do
+        content_string = text.content .. "\n" .. content_string
+      end
+    end
+
+    local content = output.Content:new(
+      content_string,
+      response.total_usage,
+      prompt.remove_tags
+    )
+    if content then
+      output.with_global_output(function(o)
+        o:add_content(content)
+        vim.fn.setreg("a", content:cleanup())
+        return nil
+      end)
+    end
+  end
+
+  if action == ActionType.Send then
+    local vendor, prepared_prompt = choose_model(prompt)
+    if prepared_prompt and vendor == "anthropic" then
+      local request = ClaudeMessagesRequest:from_prompt(prompt):build()
+      send(request)
+    else
+      vim.notify(
+        "Invalid vendor. Please choose 'google'.",
+        vim.log.levels.ERROR
+      )
+    end
+  elseif action == ActionType.Prepare then
+    vim.fn.setreg("+", prompt:content())
+    vim.notify("Prompt prepared", vim.log.levels.INFO, { title = "Cerebro" })
+  end
 end
 
 return M

@@ -1,8 +1,23 @@
 ---@enum ClaudeRole
 local Role = {
-  User = "user",
-  Assistant = "assistant",
+  USER = "user",
+  ASSISTANT = "assistant",
 }
+
+---@enum Cerebro.Anthropic.CacheType
+local CacheType = {
+  EPHEMERAL = "ephemeral",
+}
+
+--- @class Cerebro.Anthropic.CacheControl
+--- @field type Cerebro.Anthropic.CacheType
+local CacheControl = {}
+CacheControl.__index = CacheControl
+---
+---@return Cerebro.Anthropic.CacheControl
+function CacheControl:enable()
+  return setmetatable({ type = CacheType.EPHEMERAL }, { __index = self })
+end
 
 --- Translates a role string to its corresponding GeminiRole value.
 --- Throws an error if the role is invalid.
@@ -10,9 +25,9 @@ local Role = {
 --- @return ClaudeRole The translated role.
 function Role:from(role)
   if role == "user" then
-    return Role.User
+    return Role.USER
   elseif role == "model" or role == "assistant" then
-    return Role.Assistant
+    return Role.ASSISTANT
   else
     error("Invalid role: " .. role) -- Throw an error if the role is invalid
   end
@@ -47,8 +62,10 @@ function ImageSource:new(base64)
   return setmetatable({ base64 = base64 }, { __index = self })
 end
 
----@class ClaudeImage
----@field source ClaudeImageSource
+--- @class ClaudeImage
+--- @field source ClaudeImageSource
+--- @field type string
+--- @field cache_control Cerebro.Anthropic.CacheControl | nil
 local Image = {}
 Image.__index = Image
 
@@ -56,12 +73,13 @@ Image.__index = Image
 ---@param source ClaudeImageSource The source of the image.
 ---@return ClaudeImage The new ClaudeImage instance.
 function Image:new(source)
-  return setmetatable({ source = source }, { __index = self })
+  return setmetatable({ type = "image", source = source }, { __index = self })
 end
 
----@class ClaudeText
----@field text string
----@field type string
+--- @class ClaudeText
+--- @field text string
+--- @field type string
+--- @field cache_control Cerebro.Anthropic.CacheControl | nil
 local Text = {}
 Text.__index = Text
 
@@ -69,7 +87,7 @@ Text.__index = Text
 --- @return ClaudeText
 function Text:new(text)
   if type(text) == "string" then
-    return setmetatable({ text = text, type = "text" }, self)
+    return setmetatable({ type = "text", text = text }, self)
   elseif type(text) == "table" and text.__index == Text then
     --- @cast text ClaudeText
     return text
@@ -82,43 +100,88 @@ function Text:new(text)
   end
 end
 
+function Text:cache()
+  self.cache_control = CacheControl:enable()
+  return self
+end
+
 --- @class ClaudeToolUse
 --- @field id string
 --- @field name string
 --- @field input table
+--- @field type string
+--- @field cache_control Cerebro.Anthropic.CacheControl | nil
 local ToolUse = {}
 ToolUse.__index = ToolUse
 
---- @param id string
---- @param name string
---- @param input table
+--- @param data table
 --- @return ClaudeToolUse
-function ToolUse:new(id, name, input)
-  return setmetatable(
-    { id = id, name = name, input = input },
-    { __index = self }
-  )
+function ToolUse:new(data)
+  return setmetatable(data, { __index = self })
 end
 
 --- @class ClaudeToolResult
---- @field id string
---- @field content table
+--- @field tool_use_id string
+--- @field content ClaudeMultiModalContent[]
 --- @field is_error boolean
+--- @field type string
+--- @field cache_control Cerebro.Anthropic.CacheControl | nil
 local ToolResult = {}
 ToolResult.__index = ToolResult
 
---- @param id string
---- @param content table
---- @param is_error boolean
+--- @param data table
 --- @return ClaudeToolResult
-function ToolResult:new(id, content, is_error)
-  return setmetatable(
-    { id = id, content = content, is_error = is_error },
-    { __index = self }
-  )
+function ToolResult:new(data)
+  return setmetatable(data, { __index = self })
+end
+
+--- @param id string
+--- @param content ClaudeMultiModalContent
+--- @return ClaudeToolResult
+function ToolResult:success(id, content)
+  return setmetatable({
+    type = "tool_result",
+    tool_use_id = id,
+    content = { content },
+    is_error = false,
+  }, { __index = self })
+end
+
+--- @param id string
+--- @param content ClaudeMultiModalContent
+--- @return ClaudeToolResult
+function ToolResult:error(id, content)
+  return setmetatable({
+    type = "tool_result",
+    tool_use_id = id,
+    content = { content },
+    is_error = true,
+  }, { __index = self })
 end
 
 ---@alias ClaudeMultiModalContent ClaudeText | ClaudeImage | ClaudeToolUse | ClaudeToolResult
+local MultimodalContent = {}
+MultimodalContent.__index = MultimodalContent
+
+--- @param content table
+--- @return ClaudeMultiModalContent
+function MultimodalContent:new(content)
+  if type(content) ~= "table" or type(content.type) ~= "string" then
+    error("Invalid content format. Expected table with 'type' field.")
+  end
+
+  if content["type"] == "text" then
+    return Text:new(content.text)
+  elseif content["type"] == "image" then
+    return Image:new(content)
+  elseif content["type"] == "tool_use" then
+    return ToolUse:new(content)
+  elseif content["type"] == "tool_result" then
+    return ToolResult:new(content)
+  else
+    error(string.format("Unsupported content type: %s", content.type))
+  end
+end
 
 ---@class ClaudeMessage
 ---@field role ClaudeRole
@@ -128,9 +191,13 @@ local Message = {}
 Message.__index = Message
 
 ---@param role ClaudeRole
----@param content? ClaudeText | ClaudeImage | ClaudeToolUse | ClaudeToolResult
+---@param content? ClaudeMessage | ClaudeText | ClaudeImage | ClaudeToolUse | ClaudeToolResult
 ---@return ClaudeMessage
 function Message:new(role, content)
+  if type(content) == "table" and content.__index == self then
+    --- @cast content ClaudeMessage
+    return content
+  end
   local obj = setmetatable({ role = role, content = {} }, { __index = self })
 
   if content then
@@ -143,13 +210,13 @@ end
 ---@param data? ClaudeText | ClaudeImage | ClaudeToolUse | ClaudeToolResult
 ---@return ClaudeMessage
 function Message:user(data)
-  return Message:new(Role.User, data)
+  return Message:new(Role.USER, data)
 end
 
 ---@param data? ClaudeText | ClaudeImage | ClaudeToolUse | ClaudeToolResult
 ---@return ClaudeMessage
 function Message:Assistant(data)
-  return Message:new(Role.Assistant, data)
+  return Message:new(Role.ASSISTANT, data)
 end
 
 ---@param data  ClaudeText | ClaudeImage | ClaudeToolUse | ClaudeToolResult
@@ -165,6 +232,20 @@ function Message:serialize()
   return vim.json.encode(self)
 end
 
+--- @return ClaudeMessage
+function Message:cache()
+  if #self.content == 0 then
+    return self
+  end
+
+  local last_content = self.content[#self.content]
+  if type(last_content) == "table" then
+    last_content.cache_control = CacheControl:enable()
+  end
+
+  return self
+end
+
 return {
   Role = Role,
   Base64 = Base64,
@@ -174,4 +255,5 @@ return {
   ToolUse = ToolUse,
   ToolResult = ToolResult,
   Message = Message,
+  MultimodalContent = MultimodalContent,
 }

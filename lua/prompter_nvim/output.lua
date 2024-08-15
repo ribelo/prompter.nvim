@@ -1,10 +1,13 @@
+local nio = require("nio")
+
 local M = {}
 
 --- @class OutputContent
 --- @field id string
 --- @field content string
---- @field language string?
---- @field tags_to_remove string[]?
+--- @field language string | nil
+--- @field tags_to_remove string[] | nil
+--- @field usage ClaudeUsage | nil
 local Content = {}
 Content.__index = Content
 
@@ -15,7 +18,6 @@ M.Content = Content
 --- @param tags? string[] tags to remove, without brackets.
 --- @return string The input string with XML tags removed.
 local function remove_xml_tags(text, tags)
-  vim.print({ text = text, tags = tags })
   -- Grug remove tags one by one. Simple and clear.
   for _, tag in ipairs(tags or {}) do
     -- Grug make pattern for each tag. Easy to understand.
@@ -25,7 +27,6 @@ local function remove_xml_tags(text, tags)
     text = text:gsub(open_tag_pattern, ""):gsub(close_tag_pattern, "")
   end
   -- Grug give back clean text. Job done.
-  vim.print({ after = vim.trim(text), tags = tags })
   return vim.trim(text)
 end
 
@@ -50,10 +51,11 @@ local function extract_language(content)
 end
 
 --- Create a new Content instance.
---- @param content string? The actual content.
---- @param tags_to_remove string[]? The actual content.
---- @return OutputContent?
-function Content:new(content, tags_to_remove)
+--- @param content string | nil The actual content.
+--- @param usage ClaudeUsage | nil The actual content.
+--- @param tags_to_remove string[] | nil The actual content.
+--- @return OutputContent | nil
+function Content:new(content, usage, tags_to_remove)
   if not content then
     return
   end
@@ -64,6 +66,7 @@ function Content:new(content, tags_to_remove)
   obj.content = vim.trim(content)
   obj.language = extract_language(content)
   obj.tags_to_remove = tags_to_remove
+  obj.usage = usage
 
   return obj
 end
@@ -97,37 +100,48 @@ function Output:default()
 end
 
 --- Render the output as a markdown string.
---- @return string The markdown representation of the output.
+--- @return string Markdown The markdown representation of the output.
 function Output:render()
-  local markdown = ""
-  -- Sort contents by id (time)
+  local markdown = {}
   table.sort(self.contents, function(a, b)
-    --- in reverse order
     return a.id > b.id
   end)
-  for _, content in ipairs(self.contents) do
-    markdown = markdown .. "# " .. tostring(content.id) .. "\n"
 
-    -- Wrap content in Markdown code block if language is defined
-    vim.print({
-      language = content.language,
-      before = content.content,
-      after = content:cleanup(),
-    })
+  for _, content in ipairs(self.contents) do
+    table.insert(markdown, "# " .. tostring(content.id))
+
     if content.language then
-      ---@diagnostic disable-next-line: no-unknown
-      markdown = markdown
-        .. "```"
-        .. content.language
-        .. "\n"
-        .. content:cleanup()
-        .. "\n```\n\n"
+      table.insert(
+        markdown,
+        string.format("```%s\n%s\n```", content.language, content:cleanup())
+      )
     else
-      ---@diagnostic disable-next-line: no-unknown
-      markdown = markdown .. content:cleanup() .. "\n\n"
+      table.insert(markdown, content:cleanup())
     end
+
+    if content.usage then
+      table.insert(markdown, "**Usage:**")
+      local usage_info = {
+        { "Input tokens", content.usage.input_tokens },
+        { "Output tokens", content.usage.output_tokens },
+        {
+          "Cache creation input tokens",
+          content.usage.cache_creation_input_tokens,
+        },
+        { "Cache read input tokens", content.usage.cache_read_input_tokens },
+      }
+
+      for _, info in ipairs(usage_info) do
+        if info[2] then
+          table.insert(markdown, string.format("- %s: %s", info[1], info[2]))
+        end
+      end
+    end
+
+    table.insert(markdown, "") -- Add an empty line between entries
   end
-  return markdown
+
+  return table.concat(markdown, "\n")
 end
 
 --- Add content to the output.
@@ -166,10 +180,10 @@ local output_buf = nil
 local output = Output:default()
 
 M.get_output_buffer = function()
-  if not output_buf or not vim.api.nvim_buf_is_valid(output_buf) then
-    output_buf = vim.api.nvim_create_buf(false, true)
+  if not output_buf or not nio.api.nvim_buf_is_valid(output_buf) then
+    output_buf = nio.api.nvim_create_buf(false, true)
     local output_buf_name = "prompter://output"
-    vim.api.nvim_buf_set_name(output_buf, output_buf_name)
+    nio.api.nvim_buf_set_name(output_buf, output_buf_name)
 
     local buf_options = {
       buftype = "nofile",
@@ -178,7 +192,7 @@ M.get_output_buffer = function()
       filetype = "markdown",
     }
     for option, value in pairs(buf_options) do
-      vim.api.nvim_set_option_value(option, value, { buf = output_buf })
+      nio.api.nvim_set_option_value(option, value, { buf = output_buf })
     end
   end
   return output_buf
@@ -186,7 +200,7 @@ end
 
 M.open_output_window = function()
   -- Create a new window on the right
-  local output_win = vim.api.nvim_open_win(0, true, {
+  local output_win = nio.api.nvim_open_win(0, true, {
     split = "right",
   })
 
@@ -200,22 +214,22 @@ M.open_output_window = function()
     filetype = "markdown",
   }
   for option, value in pairs(buf_options) do
-    vim.api.nvim_set_option_value(option, value, { buf = buf })
+    nio.api.nvim_set_option_value(option, value, { buf = buf })
   end
 
-  vim.api.nvim_win_set_buf(output_win, buf)
+  nio.api.nvim_win_set_buf(output_win, buf)
   local output_lines = vim.split(output:render(), "\n")
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, output_lines)
+  nio.api.nvim_buf_set_lines(buf, 0, -1, false, output_lines)
 
   -- Set the window options
   local win_options = {
     number = false,
     relativenumber = false,
-    wrap = true,
+    wrap = false,
   }
 
   for option, value in pairs(win_options) do
-    vim.api.nvim_set_option_value(option, value, { win = output_win })
+    nio.api.nvim_set_option_value(option, value, { win = output_win })
   end
 end
 
@@ -225,7 +239,7 @@ M.close_output_window = function()
 
   if win_id then
     -- Close the window
-    vim.api.nvim_win_close(win_id, false)
+    nio.api.nvim_win_close(win_id, false)
   else
     vim.notify("Output window not found", vim.log.levels.WARN)
   end
@@ -244,7 +258,7 @@ end
 M.refresh_output_buffer = function()
   local buf = M.get_output_buffer()
   local output_lines = vim.split(output:render(), "\n")
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, output_lines)
+  nio.api.nvim_buf_set_lines(buf, 0, -1, false, output_lines)
 end
 
 --- @generic T
